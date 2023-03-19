@@ -5,6 +5,377 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/).
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [[0.1.4] - 2023-03-14](https://github.com/teambit/bit/releases/tag/v0.1.4)
+### New Features
+- Support generating a component for `bit create` with `--aspect` or `--env` option (#7093)
+- Introduce "bit fork --no-link" flag to avoid saving a reference to the original comp (#7140)
+- Add option for `bit login` to pass custom login url (#7143)
+
+### Changes
+- `--rename` flag is now default for `bit fork` (#7146)
+- Remove pre-render by default from the react app template (#7132)
+
+### Bug Fixes
+- Fix Package version for snaps on main in use-dropdown (#7141)
+- On changing scope for a lane, block when lane is exported, throw when scope-name is invalid (#7139)
+- On `bit status` avoid showing components as pending-update when their remote-lane is empty (#7138)
+- Handle soft-remove on a new lane and import soft-removed components (#7137)
+- Add EnvId in preview url (#7136)
+- Fetch artifacts from `main` if possible (#7134)
+- Fix error text for `bit reset`, change untag to reset (#7130)
+- Fix incorrect domain in for new cloud (#7129)
+- Fix `VersionNotFound` error when resetting a lane after merge (#7121)
+- Remove `*` from url in Readme (#7108)
+
+### Internal
+- Fix aspects loading from scope (#7133)
+- Eject `teambit.html/modules/render-template` (#7135)
+
+## [[0.1.0] - 2023-03-08](https://github.com/teambit/bit/releases/tag/v0.1.0)
+### New Features
+
+- feat(Schema): allow querying explicitly tagged exports (#7125)
+- feat(import): introduce "--track-only" to only write entries to .bitmap (#7117)
+
+### Changes
+
+- feat(Lane): CLI: create cmd: add note to lane create output if branched off non default lane (#7126)
+- improvement(status): improve the output around the current lane (#7114)
+- fix(remove): block soft-remove main components when on a lane (#7112)
+
+### Performance
+
+- perf(webpack): update sourcemaps for faster builds (#7115)
+
+### Bug Fixes
+
+- fix(WorkspaceDrawer): fix viewing new components on main (#7123)
+- fix(artifacts): support running on snaps (#7116)
+- fix(snap/tag): tag soft-removed components when using --unmodified flag (#7113)
+- fix, show the ids of pending-import in the error message (#7110)
+- fix(soft-remove): mark as removed when the snap/tag was with ignore-issues (#7111)
+- fix(Compare): Compare UI Fixes (#7102)
+- fix, fix error "exists in flattenedEdges but not in flattened" (#7107)
+- fix(lane-list), avoid checking for soft-remove when using --remote (#7099)
+- fix, change a version coming from merge-config from a range to an exact version (#7096)
+
+### Internal
+
+- fix(envs) store envs data for env itself + load envs as aspect from scope (#7124)
+- feat: dedupe peer dependents (#7122)
+- fix(merge-from-scope), push artifacts to original scopes (#7119)
+- change(aspects): resolve (installed) aspects in workspace from its node_modules  (#6901)
+- fix(export): use the Version objects sent to the remote to indicate what was exported (#7109)
+- fix(lane-merge), import missing artifacts before starting the merge process (#7103)
+- fix, avoid adding deps from scope into merge-config (#7100)
+- Workspace: Components Drawer: Local changes to Lane Components (#7072)
+- fix logging when zlib error is coming from the remote (#7097)
+- fix(aspects): return an empty object from a plugin auto generated provider (#7095)
+
+## [[0.0.1000] - 2023-02-27](https://github.com/teambit/bit/releases/tag/v0.0.1000)
+
+### New Features
+
+- Improve dependency management with new commands: `bit deps unset`, `bit deps reset`, `bit deps eject`, `bit deps blame` (#7043 #6898 #6884 #6945)
+- Support more TS export cases for generating compositions (#7075)
+- Ability to restore deleted Lanes (#7074 #7050)
+- Introduce ability to compare between Lanes (#7011 #6998 #6778)
+- Update only owner name of a scope with `bit scope rename-owner` (#7023)
+- Ability to update implementation of forked components with `bit fork ... --rename` (#6955)
+- New Slot for aspects to expand and debug dev-server (#7037)
+- Introduce a new command `bit envs update` to update environment versions (#6909 #6862)
+- Support soft-tag for soft-removed components (#7029)
+- Load apps without needing to register them in `workspace.jsonc` (#6976)
+- Support dependencies detection for `.cjs`, `.mjs`, `.mts`, `.cts` extensions (#7009 #7038)
+- Add new service for environments - Schema (#6937 #6953 #6938 #6665)
+- Support ignoring deps by `@bit-ignore` comment (#6855 #6980)
+- Introduce a new command `file-log` to see file changes per snap (#6888)
+- Support linux-arm64 version for Bit (#6994)
+- Introduce `--editor` flag for `bit snap` (#6956)
+- Introduce `--no-optional` for `bit install` (#7030)
+
+### Changes
+
+- Improve documentation, error messages and outputs (#7087 #6882 #6905 #6928 #6960 #7014 #7054 #6851 #7007 #7010 #6895 #7041 #7024
+- Updated UI for Component Compare (#6913 #7015 #6935 #6923 #6883 #7090)
+- Newly installed dependencies are saved in workspace.jsonc with the ^ prefix by default (#7085)
+- bit install --update updates all dependencies (direct and indirect). Existing semver ranges are respected *#7085)
+- Quality of life improvements for developer experience using Lanes (#6911 #6981 #7008 #7026 #6929 #6942 #6931 #6867 #6854 #6858 #7047 #6853 #7016 #6979 #7081 #6949)
+- Improve lane merge handling (#7055 #7042 #6917 #7044 #6951 #6865 #6822 #6875 #6877 #6835 #7045 #6873)
+- UI fixes and improvements for Lanes (#7071 #6936)
+- Add an alias `-x` to `--skip-dependency-installation` flag (#7091)
+- Better handling of module names in `node_modules` upon `bit rename` (#7059)
+- Add full date timestamp tooltip for version drop down and correct import syntax (#6984)
+- Improved UI for scope-overview (#6891)
+
+### Performance
+
+- Avoid importing from main when on a lane (#6872)
+- Cache staged-snaps hashes to avoid fetching them from a remote (#7003)
+- Check the remote before exporting to filter out existing versions (#6992)
+- Do not build core-js (#6914)
+- Update pnpm and improve deduplication (#6876)
+
+### Bug Fixes
+
+- Resolve edge cases for advanced dependency management issues (#7022 #6968 #6975 #6919 #6915 #6908 #6906 #6892 #6941 #6849 #7020 #6958 #6864 #7032 #7021 #7079 #7019 #6839 #6788 #6861 #6843 #6988)
+- strict-ssl, key, ca, and cert settings should work with an https proxy (#7062)
+- Better handling for `.bitmap` edge cases (#6944 #7080 #6866)
+- Set workspace-env correctly after multiple `bit env set` (#7052)
+- Resolve edge cases for automatic dependency updates with `bit update` (#6948 #6983)
+- UI fixes for component page (#6818)
+
+### Internal
+
+- Remove code from legacy and move to components (#7089 #7060 #7033 #6987 #6982 #6977 #6970 #6971 #6969 #6965 #6950 #6946 #6943 #6932 #6922 #6912 #7013 #6857)
+- Remove many unneeded utils (#6643 #7066 #7064 #7063 #7070 #7068 #7067)
+- Ready for "new envs api" capabilities (#7040 #6973 #6957 #6933 #6934 #6874 #6780 #6846 #6940 #6926 #7005 #7000 #6904 #7048 #6869 #6963 #7004 #7077)
+- Ability to `snap`, `tag` and merge components from remote scopes (#7084 #7053 #7051 #7031 #6952 #6836 #7049 #6850 #6886 #7036)
+- Ability to "sign" a snap or a tag from a remote (#7078 #7028 #7017)
+- Update the registry mock (#7082)
+- Update pnpm version (#7069 #6993)
+- Move Bit to use `rootComponents:true` (#6642)
+- Re-format all source code with prettier (#7057)
+- Load apps as aspects (#6961)
+- Allow not adding the env id to the Preview URL (#7083)
+- Apply auto-detect-overrides regardless whether it was detected beforehand (#7088)
+- Improve application metadata type (#6947)
+- Resolve webpack-dev-server version for `bit envs get <component>` (#6939)
+- Allow configuring via `bit config` - `cloud_domain` and `symphony_url` (#6930)
+- Add `addPostCssPlugins` method to webpack config mutator (#6972)
+- Support getting an instance of webpack dev server instead of path to it (#6990)
+- Calculate tarball sha512 integrity when packing (#6989)
+- Refactor around `pino-pretty` (#6789 #6870)
+- Setting `packageImportMethod` for Yarn (#6860 #6871)
+- Add missing flattened and edges to new snap/tag (#6848)
+- Support reload scope's `index.json` if need (#6838)
+- Avoid loading envs aspects from various sources once an env is determined either by config or data (#6837)
+- Ensure generator is loaded before register slot (#6974)
+- Export component preview type (#6903)
+- Support multiple docs template and mounters on the same dev server (#6825)
+- Add app service transform func (#6847)
+- Group by envs and apps for rootComponents (#6800)
+- Improve component history handling (#7073 #6856 #6985 #6924)
+- Use the default store and cache locations for pnpm (#7039)
+- Add `--skip-config` to help in cases aspects fail to load during `bit fork` (#6910)
+- Introduce a new flag `--one-line` for `bit log` (#6885 #7012)
+- Introduce an API Server to run commands through HTTP server (#7056)
+- Fix id-graph to not use graph from the scope when a dependency is in the workspace (#6897)
+- Avoid writing staged-config file before `bit tag` is successful (#6852)
+
+## [[0.0.945] - 2022-12-27](https://github.com/teambit/bit/releases/tag/v0.0.945)
+
+### New Features
+- New tab for exploring component's API reference (#6444)
+- Responsive top bar navigation in component page (#6709)
+- Add component ID and package name in component overview (#6698)
+- Keep workspace command history `.bit/command-history` (#6658)
+- Ability to view contents of non-binary artifact files (#6597, #6623)
+- Extract component Typescript schema (#6578, #6624, #6620)
+- Ability for 3-way merge of aspects config (#6791)
+- Support setting default bit registry in global config (#6807)
+- Introduce `--internal` flag to see the private commands (#6725)
+- Ability to version component on remote and control what to update (#6676, #6602, #6672)
+- Ability to check whether a lane is up to date (#6666)
+- Ability to checkout `--entire-lane` to get new components on a lane (#6661)
+- Support tracking files that starts with `.` (#6757)
+- Allow to skip compilation step when installing dependencies (#6687)
+- Ability to remove dependency of a specific type (#6625)
+- Support `latest` for checking-out the "tip" of component version history (#6619)
+- Ability to `toposort` components according to dependencies build order (#6701)
+- Ability to create and delete lanes from GQL (#6656)
+- Get lane diff via API (#6759)
+
+### Changes
+- fix(tag): use pre-release for auto-tag as well instead of patch (#6763)
+- Show all changes when comparing between lanes (#6817)
+- When no diff is visible, suggest `--verbose` option (#6752)
+- Update typescript to `4.7.4` (#6603)
+- Update core `teambit.react/react` to set `allowJs: true` by default (#6734)
+- Tester watch on start is set to `false` by default (#6747)
+- Print install and import duration, suppress object-count on ci (#6726)
+- Support `--json` output option for merge-lane flow (#6654)
+- List remote lanes (#6736)
+- Mocha tester to support typescript (#6621)
+- Add hash to the create-lane API (#6815)
+- Ability to skip UI build on `bit start` (#6634)
+
+### Bug Fixes
+- Better handling when fetching artifacts (#6751, #6776)
+- Add guard rails for `bit dep set` when adding a missing dependency (#6702)
+- Fix case when direct dependencies got duplicated (#6711)
+- Fix converting `graph` to `ComponentGraph` for handle runtime edges correctly (#6833)
+- Remove previous env even when not in the `.bitmap` (#6828)
+- Fix component id resolution from URL (#6821)
+- Ignore removed components when checking for `MissingManuallyConfiguredPackages` (#6814)
+- Better error when a command is running outside a workspace (#6806)
+- Avoid removing deps that were set before tag/snap (#6805)
+- Avoid showing duplicate `MissingManuallyConfiguredPackages` entries (#6812)
+- Recompile components with build-status failed (#6786)
+- Update links to command outputs to docs (#6605)
+- Load extensions only once after merging from different sources (#6769)
+- Handle log cases where missing entry were not imported (#6697)
+- Fix cases where `import` didn't pay attention to current lane (#6801)
+- UI fixes for viewing lanes (#6714)
+- Dist directories should not be removed after install (#6662)
+- UI fixes for `usebox` (#6783)
+- Bug fixes and edge cases around lanes merge (#6692, #6831, #6829, #6826, #6823, #6822, #6767, #6793, #6794, #6803, #6735, #6667)
+- Remove the undefined in bit-list header when using `--scope` flag (#6627)
+- `bit rename --refactor` to change only packages that have an exact match (#6618)
+- Fix a typos in command descriptions (#6640)
+- Fix rendering of lane selector when viewed lane changes (#6724)
+- Fix determine whether a component is new based also on `.bitmap` record (#6655)
+- Avoid overriding dependencies set before tag/snap (#6696)
+- `bit status` should not show missing deps incorrectly (#6710)
+- Remove stagedConfig for all exported components (#6732)
+- Avoid showing mocha tests output during bit-start (#6680)
+- Fix `reset` when the component is diverged on lane and has no head on main (#6678)
+- Avoid sending historical Version objects during export on lane (#6690)
+- pass `pnpUnpluggedFolder` to fix error on `yarn install` (#6834)
+- Filter out soft-removed from --entire-lane flag (#6713)
+- Avoid creating two instances of `scope.repository` after bit-cc (#6718)
+- Hoisting should not override linked components (#6788)
+- Don't rerun install for the same manifests again (#6755)
+- Fix missing scope-name in flattened-edge prop (#6774)
+- Resolve env-id correctly (#6632)
+- `EnvNotConfiguredForComponent` error to suggest running `bit env set` (#6601)
+
+### Performance
+- Improve import performance by fetching only the requested version (#6639)
+- Avoid fetching flattened dependencies (#6705)
+- Improve `lane diff` performance (#6799)
+- Yarn should use a content-addressable store (#6730)
+- Make history traversal faster by caching them in the fs (#6606)
+- Improve `build-graph-from-fs` performance by not trying to import existing deps (#6612)
+- Support Yarn global cache (#6717, #6729)
+- Avoid fetching flattened-deps when possible (#6785)
+- Get env preview data on load (#6616)
+
+### Internal
+
+- Prepare and stabilize `rootComponents` (#6750, #6782, #6631, #6675, #6691, #6688)
+- Prepare and stabilize envs as plugins (#6745, #6644, #6739, #6811, #6703, #6816, #6780, #6766, #6742, #6693)
+- Prepare and stabilize lane-compare (#6704, #6777, #6733. #6677, #6657, #6651)
+- Utilize the deps graph when possible (#6775)
+- Update babel packages to latest (#6604)
+- Upgrade pino (#6797)
+- Remove `prodGraph` prop from `get-flattened-dependencies` (#6728)
+- Utilize pino transport (Worker Thread) (#6798)
+- Update harmony version (#6781)
+- add default export to core aspects (#6694, #6779)
+- updated component highlighter not to use z-indexs component (#6808)
+- remove unnecessary code from component overview (#6699)
+- Update lint and prettier rules (#6741, #6740)
+- Avoid running mutliple on-start hooks in parallel (#6795)
+- Use BitError and not legacy error handler for `VersionNotFound` (#6638)
+- Remove export-metadata, it is not needed anymore (#6758)
+- Sync deps for component compare (#6773)
+- Avoid loading cli aspect twice (#6719)
+- Handle failures inside Mocha hooks (#6753)
+- Filter teambit/legacy from root policy (#6649)
+- Express route priority type (#6636)
+- Get the tsconfig from getCompiler API when possible (#6663)
+- Support variant config policy as array of object with name, version, hidden, force (#6810)
+- Handle loading aspect-root without a version (#6765)
+- Better logs around the removal of staged-config during export (#6715)
+- Use named export from aspect when generating link file for webpack (#6754)
+
+## [[0.0.888] - 2022-10-27](https://github.com/teambit/bit/releases/tag/v0.0.888)
+
+### New Features
+- Show generated artifacts of a build in code tab (#6550)
+- Introduce a new command `bit write-tsconfig` to write tsconfig files in the components directories (#6506 #6531)
+- Compile custom envs during installation (#6480)
+- Ability to expand/Collapse nested objects and Copy JSON and component configuration tab (#6563)
+- `bit scope-rename` - `--refactor` flag now rename aspect-ids in `workspace.jsonc` (#6564)
+- `bit status` identify duplicate component and package (#6546)
+- Show component-issue during `status` and `tag` when tracked component exists as a package in `workspace.jsonc`. (#6546)
+- Slot for aspects to register component-issues in `status`. (#6546)
+- `bit import --dependents` - builds a graph of all components in the workspace, searches for all paths from them to the target component-id(s) given in the command and imports them.(#6552)
+- `status` always show the full-id (#6201)
+- `bit graph` supports JSON output with `--json` (#6497)
+- Lanes: Lane Switcher: Switch between all available lanes in Workspace and Scope (#6330)
+- `bit status` supports showing updates from forked lanes (#6575)
+- `bit lane` show the full lane-id (#6561)
+- `bit lane merge` shows a summary report of component state (merged/unchanged/failed/snapped) (#6500)
+- feat: add a new "FetchMissingHistory" action (#6595)
+- add parents to graphql component log (#6585)
+
+### Changes
+- **breaking:** change `modifiedComponent` to `modifiedComponents` in the status json output. (#6201)
+- `bit build` - replace `--all` flag with `--unmodified` (#6553)
+- Improve status API to return ComponentIDs and not legacy IDs. (#6201)
+- `bit status --json` returns component-ids, not the whole component objects. (#6201)
+- Switch command alias with command name. (#6508)
+- Do not store env version in the envs data in model (#6511)
+
+### Bug Fixes
+- Dependency drawer scrollable (#6550)
+- `bit remove` - fix "Maximum call stack size exceeded" error when the graph deps is huge (#6565)
+- Allow recovering when objects are corrupted (#6559)
+- Avoid clearing the screen during bit-watch (#6503)
+- Add missing packages if specify by end and install shared peers in root if has supported range (#6512)
+- Fix scope ui drawer (#6574)
+- Avoid saving duplicate aspects to the model or `tag` or `snap` (#6567)
+- `bit aspect update` - indicate in the output when components are up to date (#6566)
+- Validate env policy configs before proceeding with installation (#6525)
+- Fix missing head history when on a lane (#6549)
+- `bit show` - avoid throwing `EnvNotFound` when running on a remote component (#6556)
+- Fix node env template (#6555)
+- Fix react env minor (#6526)
+- Fix `createEsmCompilerTask` signature
+- Finding local-tags more consistent by always checking diverge-data (#6517)
+- Avoid throwing from remotes when fetch-object fails (#6539)
+- Fix scope pane layout (#6540)
+- Download artifacts from unmerged-lane-id when applicable (#6537)
+- Fix snap order + lane component - `useComponentFilters` (#6527)
+- Fix export on lane when a non-lane-scope has some history on the main-ref (#6530)
+- `bit export` - fix `parent-not-found` error when sending multiple snaps to a remote (#6528)
+- `bit lane merge` merge components that exist on a local-lane and in `.bitmap` with `isAvailableOnCurrentLane=false` (#6521)
+- Avoid throwing `ComponentNotFound` when `.bitmap` has a non-exist version on the scope (#6496)
+- `bit install` show a clear error when running outside a workspace (#6522)
+- Fix finding local-versions when on a lane (#6519)
+- Don't fail when error from pnpm doesn't have an error code (#6520)
+- `bit reset` - make local-versions on lane be aware of main to not reset it (#6516)
+- `bit export` - send only objects needed when exporting on lane and do not rely on the cache (#6504)
+- `bit import` - exclude lane-only components when importing entire scope (#6499)
+- change config overflow-x to auto from scroll (#6591)
+- refresh envs filter between lanes (#6590)
+- fix: retry to delete pending-objects dir in case of ENOTEMPTY error (#6588)
+- fix ParentNotFound error to be shown when is coming from the remote (#6586)
+- load dependencies from unmerged head of components (#6584)
+- fix: peer dependencies should be hoisted when root components are used (#6562)
+
+### Performance
+- Avoid refetching unbuilt versions when building a graph (#6579)
+- Improve loading performance when some dependencies in the graph are build pending (#6568)
+- Fetch unbuilt version objects only during `bit import` (#6572)
+- Keep memory consumption sane when traversing history during fetch (#6541)
+- Fix high memory consumption of `fetchWithDeps` (#6534)
+- `bit export` - improve lane export performance (#6507)
+- perf: avoid loading aspects that are not declared as dependencies in the manifests (#6587)
+
+### Internal
+- Update pnpm dependencies (#6547)
+- Avoid building the graphs for multiple envs in parallel (#6577)
+- Remove `importManyWithAllVersions`, refactor some import methods (#6542)
+- Move some import methods from legacy to Importer aspect. (#6542)
+- Change `applyVersion` of the merge command to not run in parallel, so then it won't run `importMany` in parallel. (#6542)
+- Avoid reading the same files from the filesystem if they already sent to the client in the previous versions (#6542)
+- Move some functions from sources to Snapping aspect (#6523)
+- Logging network configuration settings (#6513)
+- Avoid caching the component-graph (#6501)
+- upgrade post css modules (#6598)
+- chore: update minimatch to 3.0.5 (#6596)
+- recursively parse export specifiers (#6594)
+- eject design pill label component (#6589)
+- extract compositions-overview ui into a dedicated component (#6583)
+
+## [14.8.9-dev.1] - 2020-07-30
+
+- first version for harmony beta
+
+
 ## [[14.8.8] - 2020-07-13](https://github.com/teambit/bit/releases/tag/v14.8.8)
 
 ### Bug Fixes

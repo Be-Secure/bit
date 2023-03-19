@@ -1,6 +1,5 @@
-import Diagnosis from '../diagnosis';
-import { ExamineBareResult } from '../diagnosis';
 import npmClient from '../../npm-client';
+import Diagnosis, { ExamineBareResult } from '../diagnosis';
 
 export default class ValidateNpmExec extends Diagnosis {
   name = 'validate npm exec';
@@ -19,12 +18,12 @@ export default class ValidateNpmExec extends Diagnosis {
     const npmVersion = await npmClient.getNpmVersion();
     if (npmVersion) {
       return {
-        valid: true
+        valid: true,
       };
     }
     return {
       valid: false,
-      data: {}
+      data: {},
     };
   }
 }

@@ -1,13 +1,21 @@
-import * as path from 'path';
-import fs from 'fs-extra';
-import tar from 'tar';
 import chalk from 'chalk';
-import FsHelper from './e2e-fs-helper';
-import CommandHelper from './e2e-command-helper';
+import fs from 'fs-extra';
+import { capitalize } from 'lodash';
+import * as path from 'path';
+import tar from 'tar';
+
 import * as fixtures from '../../src/fixtures/fixtures';
+import CommandHelper from './e2e-command-helper';
+import FsHelper from './e2e-fs-helper';
 import NpmHelper from './e2e-npm-helper';
-import ScopesData from './e2e-scopes';
 import PackageJsonHelper from './e2e-package-json-helper';
+import ScopeHelper from './e2e-scope-helper';
+import ScopesData from './e2e-scopes';
+
+export type GenerateEnvJsoncOptions = {
+  policy?: Record<string, any>;
+  patterns?: Record<string, string[]>;
+};
 
 export default class FixtureHelper {
   fs: FsHelper;
@@ -16,13 +24,16 @@ export default class FixtureHelper {
   debugMode: boolean;
   npm: NpmHelper;
   packageJson: PackageJsonHelper;
+  scopeHelper: ScopeHelper;
+
   constructor(
     fsHelper: FsHelper,
     commandHelper: CommandHelper,
     npmHelper: NpmHelper,
     scopes: ScopesData,
     debugMode: boolean,
-    packageJson: PackageJsonHelper
+    packageJson: PackageJsonHelper,
+    scopeHelper: ScopeHelper
   ) {
     this.fs = fsHelper;
     this.command = commandHelper;
@@ -30,6 +41,7 @@ export default class FixtureHelper {
     this.scopes = scopes;
     this.debugMode = debugMode;
     this.packageJson = packageJson;
+    this.scopeHelper = scopeHelper;
   }
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   createComponentBarFoo(impl?: string = fixtures.fooFixture) {
@@ -57,21 +69,37 @@ export default class FixtureHelper {
   addComponentUtilsIsType() {
     return this.command.addComponent('utils/is-type.js', { i: 'utils/is-type' });
   }
-
+  createComponentIsType() {
+    this.fs.createFile('is-type', 'is-type.js');
+  }
+  addComponentUtilsIsTypeAsDir() {
+    return this.command.addComponent('is-type', { i: 'utils/is-type' });
+  }
+  createComponentIsString(impl = fixtures.isStringHarmony) {
+    this.fs.createFile('is-string', 'is-string.js', impl);
+  }
   addComponentUtilsIsString() {
     return this.command.addComponent('utils/is-string.js', { i: 'utils/is-string' });
   }
+  addComponentUtilsIsStringAsDir() {
+    return this.command.addComponent('is-string', { i: 'utils/is-string' });
+  }
 
   tagComponentBarFoo() {
-    return this.command.tagComponent('bar/foo');
+    return this.command.tagWithoutBuild('bar/foo');
   }
   getFixturesDir() {
     return path.join(__dirname, '../../e2e/fixtures');
   }
 
-  copyFixtureComponents(dir = '', cwd: string = this.scopes.localPath) {
+  copyFixtureDir(src: string, dest: string) {
+    const sourceDir = path.join(this.getFixturesDir(), src);
+    fs.copySync(sourceDir, dest);
+  }
+
+  copyFixtureComponents(dir = '', dest: string = path.join(this.scopes.localPath, dir)) {
     const sourceDir = path.join(this.getFixturesDir(), 'components', dir);
-    fs.copySync(sourceDir, cwd);
+    fs.copySync(sourceDir, dest);
   }
 
   copyFixtureExtensions(dir = '', cwd: string = this.scopes.localPath) {
@@ -100,6 +128,15 @@ export default class FixtureHelper {
     this.fs.createFile('utils', 'is-string.js', fixtures.isString);
     this.addComponentUtilsIsString();
     this.createComponentBarFoo(fixtures.barFooFixture);
+    this.addComponentBarFoo();
+  }
+
+  populateWorkspaceWithComponentsWithV2() {
+    this.fs.createFile('utils', 'is-type.js', fixtures.isTypeV2);
+    this.addComponentUtilsIsType();
+    this.fs.createFile('utils', 'is-string.js', fixtures.isStringV2);
+    this.addComponentUtilsIsString();
+    this.createComponentBarFoo(fixtures.barFooFixtureV2);
     this.addComponentBarFoo();
   }
 
@@ -140,40 +177,134 @@ export default class FixtureHelper {
    *
    * @returns the expected output in case "node app.js" is running
    */
-  populateComponents(numOfComponents = 3): string {
-    const getImp = index => {
-      if (index === numOfComponents) return `module.exports = () => 'comp${index}';`;
-      const nextComp = `comp${index + 1}`;
-      return `const ${nextComp} = require('../${nextComp}');
-module.exports = () => 'comp${index} and ' + ${nextComp}();`;
-    };
+  populateComponents(numOfComponents = 3, rewire = true, additionalStr = '', compile = true, esm = false): string {
     for (let i = 1; i <= numOfComponents; i += 1) {
-      this.fs.outputFile(path.join(`comp${i}`, `index.js`), getImp(i));
+      let content;
+      if (!esm) {
+        content = this.getCjsImplForPopulate(numOfComponents, i, additionalStr);
+      } else {
+        content = this.getEsmImplForPopulate(numOfComponents, i, additionalStr);
+      }
+      this.fs.outputFile(path.join(`comp${i}`, `index.js`), content);
       this.command.addComponent(`comp${i}`);
     }
-    this.fs.outputFile('app.js', "const comp1 = require('./comp1');\nconsole.log(comp1())");
+    let appContent = "const comp1 = require('./comp1');\nconsole.log(comp1())";
+    if (esm) {
+      appContent = "import comp1 from './comp1';\nconsole.log(comp1())";
+    }
+    this.fs.outputFile('app.js', appContent);
+    if (rewire) {
+      this.command.linkAndRewire();
+    }
+    if (compile) this.command.compile();
     return Array(numOfComponents)
       .fill(null)
-      .map((val, key) => `comp${key + 1}`)
+      .map((val, key) => `comp${key + 1}${additionalStr}`)
       .join(' and ');
   }
 
-  populateComponentsTS(numOfComponents = 3): string {
-    const getImp = index => {
+  private getCjsImplForPopulate(numOfComponents: number, index: number, additionalStr = ''): string {
+    if (index === numOfComponents) return `module.exports = () => 'comp${index}${additionalStr}';`;
+    const nextComp = `comp${index + 1}`;
+    return `const ${nextComp} = require('../${nextComp}');
+module.exports = () => 'comp${index}${additionalStr} and ' + ${nextComp}();`;
+  }
+
+  private getEsmImplForPopulate(numOfComponents: number, index: number, additionalStr = ''): string {
+    if (index === numOfComponents)
+      return `export default function(){
+return 'comp${index}${additionalStr}';
+}`;
+    const nextComp = `comp${index + 1}`;
+    return `import ${nextComp} from '../${nextComp}';
+module.exports = () => 'comp${index}${additionalStr} and ' + ${nextComp}();`;
+  }
+
+  /**
+   * This will populate extensions that does nothing
+   * its purpose is to check different config merges
+   *
+   * @param {number} [numOfExtensions=3]
+   * @returns {string}
+   * @memberof FixtureHelper
+   */
+  populateExtensions(numOfExtensions = 3, printNameInProvider = false): void {
+    const aspectImp = (index) => {
+      return `
+      import { Aspect } from '@teambit/harmony';
+
+      export const Ext${index}Aspect = Aspect.create({
+        id: 'my-scope/ext${index}',
+        dependencies: [],
+        defaultConfig: {},
+      });
+      export default Ext${index}Aspect;
+
+      `;
+    };
+    const mainImp = (index) => {
+      let provider = `static async provider(_deps, config) {
+        return new Ext${index}Main(config);
+      }`;
+      if (printNameInProvider) {
+        provider = `static async provider(_deps, config) {
+          const extMain = new Ext${index}Main(config);
+          extMain.printName();
+          return extMain;
+        }`;
+      }
+      return `
+      import { MainRuntime } from '@teambit/cli';
+      import { Ext${index}Aspect } from './ext${index}.aspect';
+
+      export class Ext${index}Main {
+        static runtime: any = MainRuntime;
+        static dependencies: any = [];
+
+        constructor(public config: any) {}
+
+        printName() {
+          console.log('ext ${index}');
+        }
+        ${provider}
+      }
+      export default Ext${index}Main;
+      Ext${index}Aspect.addRuntime(Ext${index}Main);
+      `;
+    };
+    for (let i = 1; i <= numOfExtensions; i += 1) {
+      const aspectFileName = `ext${i}.aspect.ts`;
+      this.fs.outputFile(path.join('extensions', `ext${i}`, aspectFileName), aspectImp(i));
+      this.fs.outputFile(path.join('extensions', `ext${i}`, `ext${i}.main.runtime.ts`), mainImp(i));
+      this.command.addComponent(`extensions/ext${i}`, { m: aspectFileName });
+    }
+  }
+
+  populateComponentsTS(numOfComponents = 3, owner = '@bit', isHarmony = true): string {
+    let nmPathPrefix = `${owner}/${this.scopes.remote}.`;
+    if (isHarmony) {
+      const remoteSplit = this.scopes.remote.split('.');
+      if (remoteSplit.length === 1) {
+        nmPathPrefix = `@${this.scopes.remote}/`;
+      } else {
+        nmPathPrefix = `@${remoteSplit[0]}/${remoteSplit[1]}.`;
+      }
+    }
+    const getImp = (index) => {
       if (index === numOfComponents) return `export default () => 'comp${index}';`;
       const nextComp = `comp${index + 1}`;
-      return `import ${nextComp} from '@bit/${this.scopes.remote}.${nextComp}';
+      return `import ${nextComp} from '${nmPathPrefix}${nextComp}';
 export default () => 'comp${index} and ' + ${nextComp}();`;
     };
     for (let i = 1; i <= numOfComponents; i += 1) {
       this.fs.outputFile(path.join(`comp${i}`, `index.ts`), getImp(i));
+    }
+    for (let i = numOfComponents; i > 0; i -= 1) {
       this.command.addComponent(`comp${i}`);
     }
     this.command.link();
-    this.fs.outputFile(
-      'app.js',
-      `const comp1 = require('@bit/${this.scopes.remote}.comp1').default;\nconsole.log(comp1())`
-    );
+    this.fs.outputFile('app.js', `const comp1 = require('${nmPathPrefix}comp1').default;\nconsole.log(comp1())`);
+    this.command.compile();
     return Array(numOfComponents)
       .fill(null)
       .map((val, key) => `comp${key + 1}`)
@@ -219,28 +350,6 @@ export default () => 'comp${index} and ' + ${nextComp}();`;
     this.addComponentBarFoo();
   }
 
-  addExtensionTS() {
-    const extensionsDir = path.join(__dirname, '..', 'extensions');
-    const extDestination = path.join(this.scopes.localPath, 'extensions');
-    fs.copySync(path.join(extensionsDir, 'typescript'), path.join(extDestination, 'typescript'));
-
-    this.command.addComponent('extensions/typescript', { i: 'extensions/typescript' });
-
-    this.npm.initNpm();
-    const dependencies = {
-      typescript: '^3.8'
-    };
-
-    this.packageJson.addKeyValue({ dependencies });
-    this.command.link();
-
-    // @todo: currently, the defaultScope is not enforced, so unless the extension is exported
-    // first, the full-id won't be recognized when loading the extension.
-    // once defaultScope is mandatory, make sure this is working without the next two lines
-    this.command.tagComponent('extensions/typescript');
-    this.command.exportComponent('extensions/typescript');
-  }
-
   /**
    * extract the global-remote g-zipped scope into the e2e-test, so it'll be ready to consume.
    * this is an alternative to import directly from bit-dev.
@@ -265,7 +374,67 @@ export default () => 'comp${index} and ' + ${nextComp}();`;
     tar.extract({
       sync: true,
       file: scopeFile,
-      cwd: this.scopes.e2eDir
+      cwd: this.scopes.e2eDir,
     });
+  }
+
+  extractCompressedFixture(filePathRelativeToFixtures: string, destDir: string) {
+    fs.ensureDirSync(destDir);
+    const compressedFile = path.join(this.getFixturesDir(), filePathRelativeToFixtures);
+    tar.extract({
+      sync: true,
+      file: compressedFile,
+      cwd: destDir,
+    });
+  }
+
+  generateEnvJsoncFile(componentDir: string, options: GenerateEnvJsoncOptions = {}) {
+    const envJsoncFile = path.join(componentDir, 'env.jsonc');
+    const defaultPatterns = {
+      compositions: ['**/*.composition.*', '**/*.preview.*'],
+      docs: ['**/*.docs.*'],
+      tests: ['**/*.spec.*', '**/*.test.*'],
+    };
+    const envJsoncFileContentJson = {
+      policy: options.policy || {},
+      patterns: options.patterns || defaultPatterns,
+    };
+    this.fs.outputFile(envJsoncFile, JSON.stringify(envJsoncFileContentJson, null, 2));
+  }
+
+  populateEnvMainRuntime(
+    filePathRelativeToLocalScope: string,
+    { envName, dependencies }: { envName: string; dependencies: any }
+  ): void {
+    const capitalizedEnvName = capitalize(envName);
+    return this.fs.outputFile(
+      filePathRelativeToLocalScope,
+      `
+import { MainRuntime } from '@teambit/cli';
+import { ReactAspect, ReactMain } from '@teambit/react';
+import { EnvsAspect, EnvsMain } from '@teambit/envs';
+import { ${capitalizedEnvName}Aspect } from './${envName}.aspect';
+
+export class ${capitalizedEnvName}Main {
+  static slots = [];
+
+  static dependencies = [ReactAspect, EnvsAspect];
+
+  static runtime = MainRuntime;
+
+  static async provider([react, envs]: [ReactMain, EnvsMain]) {
+    const templatesReactEnv = envs.compose(react.reactEnv, [
+      envs.override({
+        getDependencies: () => (${JSON.stringify(dependencies)}),
+      })
+    ]);
+    envs.registerEnv(templatesReactEnv);
+    return new ${capitalizedEnvName}Main();
+  }
+}
+
+${capitalizedEnvName}Aspect.addRuntime(${capitalizedEnvName}Main);
+`
+    );
   }
 }

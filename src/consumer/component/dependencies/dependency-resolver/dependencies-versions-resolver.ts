@@ -1,73 +1,35 @@
-import * as path from 'path';
 import R from 'ramda';
-import semver from 'semver';
 import { BitId } from '../../../../bit-id';
-import Component from '../../../component/consumer-component';
-import logger from '../../../../logger/logger';
 import Consumer from '../../../../consumer/consumer';
-import { PathLinux } from '../../../../utils/path';
-import getNodeModulesPathOfComponent from '../../../../utils/bit/component-node-modules-path';
-import Dependencies from '../dependencies';
-import componentIdToPackageName from '../../../../utils/bit/component-id-to-package-name';
-import Dependency from '../dependency';
+import logger from '../../../../logger/logger';
+import Component from '../../../component/consumer-component';
 import { ExtensionDataEntry, ExtensionDataList } from '../../../config/extension-data';
-import { resolveModulePath, resolveNodePackage } from '../files-dependency-builder';
+import Dependencies from '../dependencies';
+import Dependency from '../dependency';
+import { DebugComponentsDependency } from './dependencies-resolver';
 
-/**
- * The dependency version is determined by the following strategies by this order.
- * 1) if the component bit.json or package.json has "overrides" property, check whether the dependency version is overridden
- * 2) if workspace-config overrides this component, use it. (technically this is done via #1 because we merge the two before)
- * 3) if package.json is different than the model, use package.json. to find the package.json follow this steps:
- * 3 a) search in the component directory for package.json and look for dependencies or devDependencies with the name of the dependency
- * 3 b) if not found there, propagate until you reach the consumer root directory.
- * 3 c) if not found, go directly to the dependency directory and find the version in its package.json
- * 4) if bitmap has a version, use it.
- * 5) use the model if it has a version.
- * 6) use the package.json regardless the model.
- *
- * cases where dependency version may be different than the model:
- * 1) user added the component to `overrides` of the workspace config. (workspace bit.json or package.json)
- * 2) user changed package.json, either, manually or by npm-install —save.
- * 3) user updated a dependency with npm without —save.
- * 4) user imported the dependency with different version causing the bitmap to change.
- *
- * keep in mind that since v14.0.5 bit.json doesn't have the dependencies, so it's impossible
- * to change a dependency version from the component bit.json.
- */
-export default function updateDependenciesVersions(consumer: Consumer, component: Component) {
+export default function updateDependenciesVersions(
+  consumer: Consumer,
+  component: Component,
+  debugDependencies?: DebugComponentsDependency[]
+) {
   updateDependencies(component.dependencies);
   updateDependencies(component.devDependencies);
   updateExtensions(component.extensions);
 
   function resolveVersion(id: BitId): string | undefined {
-    // $FlowFixMe component.componentFromModel is set
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+    // @ts-ignore component.componentFromModel is set
     const idFromModel = getIdFromModelDeps(component.componentFromModel, id);
-    const idFromPackageJson = getIdFromPackageJson(id);
     const idFromBitMap = getIdFromBitMap(id);
     const idFromComponentConfig = getIdFromComponentConfig(id);
-    const idFromDependentPackageJson = getIdFromDependentPackageJson(id);
-
-    // get from packageJson when it was changed from the model or when there is no model.
-    const getFromPackageJsonIfChanged = () => {
-      if (!idFromPackageJson) return null;
-      if (!idFromModel) return idFromPackageJson;
-      if (!idFromPackageJson.isEqual(idFromModel)) return idFromPackageJson;
-      return null;
-    };
     const getFromComponentConfig = () => idFromComponentConfig;
     const getFromBitMap = () => idFromBitMap || null;
     const getFromModel = () => idFromModel || null;
-    const getFromPackageJson = () => idFromPackageJson || null;
-    const getFromDependentPackageJson = () => idFromDependentPackageJson || null;
-    const strategies: Function[] = [
-      getFromComponentConfig,
-      getFromDependentPackageJson,
-      getFromPackageJsonIfChanged,
-      getFromBitMap,
-      getFromModel,
-      getFromPackageJson
-    ];
+    const debugDep = debugDependencies?.find((dep) => dep.id.isEqualWithoutVersion(id));
+
+    // @todo: change this once vendors feature is in.
+    const getCurrentVersion = () => (id.hasVersion() ? id : null);
+    const strategies = [getFromComponentConfig, getCurrentVersion, getFromBitMap, getFromModel];
 
     for (const strategy of strategies) {
       const strategyId = strategy();
@@ -75,6 +37,12 @@ export default function updateDependenciesVersions(consumer: Consumer, component
         logger.debug(
           `found dependency version ${strategyId.version} for ${id.toString()} in strategy ${strategy.name}`
         );
+        if (debugDep) {
+          debugDep.versionResolvedFrom =
+            strategy.name === 'getCurrentVersion' ? debugDep.versionResolvedFrom : strategy.name.replace('getFrom', '');
+          debugDep.version = strategyId.version;
+        }
+
         return strategyId.version;
       }
     }
@@ -111,52 +79,6 @@ export default function updateDependenciesVersions(consumer: Consumer, component
     return dependency;
   }
 
-  /**
-   * the logic of finding the dependency version in the package.json is mostly done in the driver
-   * resolveNodePackage method.
-   * it first searches in the dependent package.json and propagate up to the consumer root, if not
-   * found it goes to the dependency package.json.
-   */
-  function getIdFromPackageJson(componentId: BitId): BitId | null | undefined {
-    if (!componentId.scope) return null;
-    // $FlowFixMe component.componentMap is set
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const rootDir: PathLinux | null | undefined = component.componentMap.rootDir;
-    const consumerPath = consumer.getPath();
-    const basePath = rootDir ? path.join(consumerPath, rootDir) : consumerPath;
-    const packagePath = getNodeModulesPathOfComponent(component.bindingPrefix, componentId);
-    const packageName = packagePath.replace(`node_modules${path.sep}`, '');
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const modulePath = resolveModulePath(packageName, basePath, consumerPath);
-    if (!modulePath) return null; // e.g. it's author and wasn't exported yet, so there's no node_modules of that component
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const packageObject = resolveNodePackage(basePath, modulePath);
-    if (!packageObject || R.isEmpty(packageObject)) return null;
-    const packageId = Object.keys(packageObject)[0];
-    const version = packageObject[packageId];
-    if (!semver.valid(version) && !semver.validRange(version)) return null; // it's probably a relative path to the component
-    const validVersion = version.replace(/[^0-9.]/g, ''); // allow only numbers and dots to get an exact version
-    return componentId.changeVersion(validVersion);
-  }
-
-  function getIdFromDependentPackageJson(componentId: BitId): BitId | null | undefined {
-    // for author, there is not package.json of a component
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    if (!component.packageJsonFile || !component.packageJsonFile.packageJsonObject.dependencies) {
-      return null;
-    }
-    const dependencyIdAsPackage = componentIdToPackageName(
-      componentId,
-      component.bindingPrefix,
-      component.defaultScope
-    );
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const version = component.packageJsonFile.packageJsonObject.dependencies[dependencyIdAsPackage];
-    if (!semver.valid(version) && !semver.validRange(version)) return null; // it's probably a relative path to the component
-    const validVersion = version.replace(/[^0-9.]/g, ''); // allow only numbers and dots to get an exact version
-    return componentId.changeVersion(validVersion);
-  }
-
   function getIdFromBitMap(componentId: BitId): BitId | null | undefined {
     return consumer.bitMap.getBitIdIfExist(componentId, { ignoreVersion: true });
   }
@@ -165,7 +87,8 @@ export default function updateDependenciesVersions(consumer: Consumer, component
     const dependencies = component.overrides.getComponentDependenciesWithVersion();
     if (R.isEmpty(dependencies)) return undefined;
     const dependency = Object.keys(dependencies).find(
-      idStr => componentId.toStringWithoutVersion() === idStr || componentId.toStringWithoutScopeAndVersion() === idStr
+      (idStr) =>
+        componentId.toStringWithoutVersion() === idStr || componentId.toStringWithoutScopeAndVersion() === idStr
     );
     if (!dependency) return undefined;
     return componentId.changeVersion(dependencies[dependency]);

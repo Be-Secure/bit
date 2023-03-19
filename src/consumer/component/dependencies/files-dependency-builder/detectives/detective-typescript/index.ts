@@ -1,12 +1,12 @@
 /**
  * this file had been forked from https://github.com/pahen/detective-typescript
  */
-import {
-  getDependenciesFromMemberExpression,
-  getDependenciesFromCallExpression,
-  getSpecifierValueForImportDeclaration
-} from '../parser-helper';
 import { isRelativeImport } from '../../../../../../utils';
+import {
+  getDependenciesFromCallExpression,
+  getDependenciesFromMemberExpression,
+  getSpecifierValueForImportDeclaration,
+} from '../parser-helper';
 
 const Parser = require('@typescript-eslint/typescript-estree');
 const Walker = require('node-source-walk');
@@ -18,32 +18,47 @@ const Walker = require('node-source-walk');
  * @param  {Object} options - options to pass to the parser
  * @return {String[]}
  */
-export default function(src, options: Record<string, any> = {}) {
+export default function (src, options: Record<string, any> = {}) {
   options.parser = Parser;
+  options.comment = true;
+  options.loc = true;
+
+  let programNode;
+
+  const shouldBeIgnored = (node) => {
+    const comments = programNode?.comments;
+    if (!comments) return false;
+    if (comments.some((c) => c.value.includes('@bit-no-check'))) return true;
+    const commentAboveNode = comments.find((c) => c.loc.start.line === node.loc.start.line - 1);
+    if (!commentAboveNode) return false;
+    return commentAboveNode.value.includes('@bit-ignore');
+  };
 
   const walker = new Walker(options);
 
   const dependencies = {};
-  const addDependency = dependency => {
+  const addDependency = (dependency: string, node?: any) => {
+    if (node && shouldBeIgnored(node)) return;
     if (!dependencies[dependency]) {
       dependencies[dependency] = {};
     }
   };
-  const addAngularLocalDependency = dependency => {
+  const addAngularLocalDependency = (dependency) => {
     const angularDep = isRelativeImport(dependency) ? dependency : `./${dependency}`;
     addDependency(angularDep);
   };
   const addImportSpecifier = (dependency, importSpecifier) => {
+    if (!dependencies[dependency]) return; // in case it was ignored
     if (dependencies[dependency].importSpecifiers) {
       dependencies[dependency].importSpecifiers.push(importSpecifier);
     } else {
       dependencies[dependency].importSpecifiers = [importSpecifier];
     }
   };
-  const addExportedToImportSpecifier = name => {
-    Object.keys(dependencies).forEach(dependency => {
+  const addExportedToImportSpecifier = (name) => {
+    Object.keys(dependencies).forEach((dependency) => {
       if (!dependencies[dependency].importSpecifiers) return;
-      const specifier = dependencies[dependency].importSpecifiers.find(i => i.name === name);
+      const specifier = dependencies[dependency].importSpecifiers.find((i) => i.name === name);
       if (specifier) specifier.exported = true;
     });
   };
@@ -56,14 +71,18 @@ export default function(src, options: Record<string, any> = {}) {
     return dependencies;
   }
 
-  walker.walk(src, function(node) {
+  // eslint-disable-next-line complexity
+  walker.walk(src, function (node) {
     switch (node.type) {
+      case 'Program':
+        programNode = node;
+        break;
       case 'ImportDeclaration':
         if (node.source && node.source.value) {
           const dependency = node.source.value;
-          addDependency(dependency);
+          addDependency(dependency, node);
 
-          node.specifiers.forEach(specifier => {
+          node.specifiers.forEach((specifier) => {
             const specifierValue = getSpecifierValueForImportDeclaration(specifier);
             addImportSpecifier(dependency, specifierValue);
           });
@@ -72,9 +91,9 @@ export default function(src, options: Record<string, any> = {}) {
       case 'ExportNamedDeclaration':
       case 'ExportAllDeclaration':
         if (node.source && node.source.value) {
-          addDependency(node.source.value);
+          addDependency(node.source.value, node);
         } else if (node.specifiers && node.specifiers.length) {
-          node.specifiers.forEach(exportSpecifier => {
+          node.specifiers.forEach((exportSpecifier) => {
             addExportedToImportSpecifier(exportSpecifier.exported.name);
           });
         }
@@ -84,21 +103,26 @@ export default function(src, options: Record<string, any> = {}) {
         break;
       case 'TSExternalModuleReference':
         if (node.expression && node.expression.value) {
-          addDependency(node.expression.value);
+          addDependency(node.expression.value, node);
         }
         break;
       case 'CallExpression':
         {
           const value = getDependenciesFromCallExpression(node);
-          if (value) addDependency(value);
+          if (value) addDependency(value, node);
         }
         break;
       case 'MemberExpression':
         {
           const value = getDependenciesFromMemberExpression(node);
-          if (value) addDependency(value);
+          if (value) addDependency(value, node);
         }
         break;
+      case 'ImportExpression': {
+        // node represents Dynamic Imports such as import(source)
+        if (node.source?.value) addDependency(node.source?.value, node);
+        break;
+      }
       case 'Decorator': // parse Angular Decorators to find style/template dependencies
         if (
           node.expression &&
@@ -109,7 +133,7 @@ export default function(src, options: Record<string, any> = {}) {
           node.expression.arguments[0].type === 'ObjectExpression'
         ) {
           const angularComponent = node.expression.arguments[0].properties;
-          angularComponent.forEach(prop => {
+          angularComponent.forEach((prop) => {
             if (!prop.key || !prop.value) return;
             if (prop.key.name === 'templateUrl' && prop.value.type === 'Literal') {
               addAngularLocalDependency(prop.value.value);
@@ -118,8 +142,8 @@ export default function(src, options: Record<string, any> = {}) {
               addAngularLocalDependency(prop.value.value);
             }
             if (prop.key.name === 'styleUrls' && prop.value.type === 'ArrayExpression') {
-              const literalsElements = prop.value.elements.filter(e => e.type === 'Literal');
-              literalsElements.forEach(element => addAngularLocalDependency(element.value));
+              const literalsElements = prop.value.elements.filter((e) => e.type === 'Literal');
+              literalsElements.forEach((element) => addAngularLocalDependency(element.value));
             }
           });
         }

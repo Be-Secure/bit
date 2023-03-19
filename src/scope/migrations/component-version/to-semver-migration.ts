@@ -9,7 +9,7 @@ import { VERSION_DELIMITER } from '../../../constants';
  * @param {*} versionModel - The parsed version model
  */
 function changeVersionToSemVer(versionModel: Object): Object {
-  const getUpdatedDependency = dependency => {
+  const getUpdatedDependency = (dependency) => {
     // Take care of very old models when the dependencies were strings
     // in this case we will keep it string but change it to contain semver
     // Those old model will still not work after this migration
@@ -65,7 +65,7 @@ function _getUpdatedId(id) {
     }
     const newId = `${parsedId.toStringWithoutVersion()}${VERSION_DELIMITER}${version}`;
     return newId;
-  } catch (err) {
+  } catch (err: any) {
     logger.error(`couldn't parse the id ${id} in order to migrate it to semver`);
     throw err;
   }
@@ -73,7 +73,7 @@ function _getUpdatedId(id) {
 
 const changeVersionToSemVerDeclartaion = {
   name: "change version's (deps & compiler / tester) to SemVer",
-  migrate: changeVersionToSemVer
+  migrate: changeVersionToSemVer,
 };
 
 export default changeVersionToSemVerDeclartaion;

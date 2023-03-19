@@ -1,20 +1,23 @@
-import { userInfo } from 'os';
 import fs from 'fs-extra';
+import pathLib from 'path';
+import writeFileAtomic from 'write-file-atomic';
+import { userInfo } from 'os';
 
-export type Options = {
+export type ChownOptions = {
   uid?: number | null | undefined;
   gid?: number | null | undefined;
 };
 
-export default (async function writeFile(
+export default async function writeFile(
   path: string,
   contents: string | Buffer,
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  options?: Options = {}
+  options: ChownOptions = {}
 ): Promise<void> {
-  await fs.outputFile(path, contents);
+  let chown;
   if (options.gid || options.uid) {
     const user = userInfo();
-    await fs.chown(path, options.uid || user.uid, options.gid || user.gid);
+    chown = { uid: options.uid || user.uid, gid: options.gid || user.gid };
   }
-});
+  await fs.ensureDir(pathLib.dirname(path));
+  await writeFileAtomic(path, contents, { chown });
+}

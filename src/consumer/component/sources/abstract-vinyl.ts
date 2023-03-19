@@ -1,11 +1,12 @@
-import * as path from 'path';
 import fs from 'fs-extra';
+import * as path from 'path';
 import Vinyl from 'vinyl';
-import { FileConstructor } from './vinyl-types';
+
 import logger from '../../../logger/logger';
+import Source from '../../../scope/models/source';
 import { eol } from '../../../utils';
 import { PathOsBased } from '../../../utils/path';
-import Source from '../../../scope/models/source';
+import { FileConstructor } from './vinyl-types';
 
 type AbstractVinylProps = {
   cwd: PathOsBased;
@@ -61,7 +62,7 @@ export default class AbstractVinyl extends (Vinyl as FileConstructor) {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       relativePath: this.relative,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      content: this.contents.toString()
+      content: this.contents.toString(),
     };
   }
 
@@ -74,7 +75,7 @@ export default class AbstractVinyl extends (Vinyl as FileConstructor) {
       cwd: parsedString._cwd,
       path: parsedString.history[parsedString.history.length - 1],
       base: parsedString._base,
-      contents
+      contents,
     };
   }
 
@@ -91,7 +92,7 @@ export default class AbstractVinyl extends (Vinyl as FileConstructor) {
     try {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       return await fs.lstat(this.path);
-    } catch (err) {
+    } catch (err: any) {
       return null; // probably file does not exist
     }
   }

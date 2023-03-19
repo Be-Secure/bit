@@ -1,26 +1,28 @@
 /**
  * this file had been forked from https://github.com/dependents/node-precinct
  */
-import fs from 'fs';
-import path from 'path';
-import getModuleType from 'module-definition';
-import Walker from 'node-source-walk';
 import detectiveAmd from 'detective-amd';
 import detectiveStylus from 'detective-stylus';
+import fs from 'fs-extra';
+import getModuleType from 'module-definition';
+import Walker from 'node-source-walk';
+import path from 'path';
+
+import { SUPPORTED_EXTENSIONS } from '../../../../../constants';
+import detectiveCss from '../detectives/detective-css';
 import detectiveEs6 from '../detectives/detective-es6';
 import detectiveLess from '../detectives/detective-less';
 import detectiveSass from '../detectives/detective-sass';
 import detectiveScss from '../detectives/detective-scss';
-import detectiveCss from '../detectives/detective-css';
 import detectiveTypeScript from '../detectives/detective-typescript';
-import detectiveStylable from '../detectives/detective-stylable';
-import detectiveVue from '../detectives/detective-vue';
-import { SUPPORTED_EXTENSIONS } from '../../../../../constants';
+import { DetectorHook } from '../detector-hook';
 
 const debug = require('debug')('precinct');
 
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 const natives = process.binding('natives');
+
+const detectorHook = new DetectorHook();
 
 /**
  * Finds the list of dependencies for the given file
@@ -54,7 +56,7 @@ function precinct(content, options) {
       ast = walker.parse(content);
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       precinct.ast = ast;
-    } catch (e) {
+    } catch (e: any) {
       // In case a previous call had it populated
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       precinct.ast = null;
@@ -75,6 +77,7 @@ function precinct(content, options) {
   debug('module type: ', type);
 
   let theDetective;
+  let detector;
 
   switch (type) {
     case 'commonjs':
@@ -103,18 +106,15 @@ function precinct(content, options) {
     case 'tsx':
       theDetective = detectiveTypeScript;
       break;
-    case 'stylable':
-      theDetective = detectiveStylable;
-      break;
-    case 'vue':
-      theDetective = detectiveVue;
-      break;
     default:
+      detector = detectorHook.getDetector(type);
+      if (detector) theDetective = detector.detect.bind(detector);
       break;
   }
 
   if (theDetective) {
-    dependencies = type === 'vue' ? theDetective(ast, options) : theDetective(ast, options[type] || {});
+    // dependencies = type === 'vue' ? theDetective(ast, options) : theDetective(ast, options[type] || {});
+    dependencies = theDetective(ast, options[type] || {});
   }
 
   // For non-JS files that we don't parse
@@ -146,10 +146,10 @@ function assign(o1, o2) {
  * @param {Boolean} [options.includeCore=true] - Whether or not to include core modules in the dependency list
  * @return {String[]}
  */
-precinct.paperwork = function(filename, options) {
+precinct.paperwork = function (filename, options) {
   options = assign(
     {
-      includeCore: true
+      includeCore: true,
     },
     options || {}
   );
@@ -158,9 +158,6 @@ precinct.paperwork = function(filename, options) {
   const ext = path.extname(filename);
 
   const getType = () => {
-    if (filename.endsWith('.st.css')) {
-      return 'stylable';
-    }
     switch (ext) {
       case '.css':
       case '.scss':
@@ -175,15 +172,23 @@ precinct.paperwork = function(filename, options) {
         if (!options.ts) options.ts = {};
         options.ts.jsx = true;
         return 'ts';
+      case '.mts':
+      case '.cts':
+        return 'ts';
       case '.jsx':
+      case '.mjs':
         return 'es6';
       default:
+        if (detectorHook.isSupported(ext)) {
+          return ext;
+        }
+
         return null;
     }
   };
 
   const getDeps = () => {
-    if (SUPPORTED_EXTENSIONS.includes(ext)) return precinct(content, options);
+    if (SUPPORTED_EXTENSIONS.includes(ext) || detectorHook.isSupported(ext)) return precinct(content, options);
     debug(`skipping unsupported file ${filename}`);
     return [];
   };
@@ -195,7 +200,7 @@ precinct.paperwork = function(filename, options) {
 
   if (deps && !options.includeCore) {
     if (Array.isArray(deps)) {
-      return deps.filter(function(d) {
+      return deps.filter(function (d) {
         return !natives[d];
       });
     }
@@ -207,5 +212,7 @@ precinct.paperwork = function(filename, options) {
 
   return deps;
 };
+
+export const detectors = [];
 
 export default precinct;

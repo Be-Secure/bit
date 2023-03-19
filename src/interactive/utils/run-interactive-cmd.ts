@@ -1,7 +1,7 @@
-import execa from 'execa';
-import rightpad from 'pad-right';
 import chalk from 'chalk';
+import execa from 'execa';
 import pSeries from 'p-series';
+import rightpad from 'pad-right';
 
 export type InteractiveInputs = InteractiveInputDefinition[];
 
@@ -34,7 +34,7 @@ export const INTERACTIVE_KEYS: InteractiveKeys = {
   up: { label: 'up', value: '\x1B\x5B\x41' },
   down: { label: 'down', value: '\x1B\x5B\x42' },
   enter: { label: 'enter', value: '\x0D' },
-  space: { label: 'space', value: '\x20' }
+  space: { label: 'space', value: '\x20' },
 };
 
 // Based on (with a lot of modifications):
@@ -46,13 +46,13 @@ export default (async function runInteractive({
   inputs = [],
   // Options for the process (execa)
   processOpts = {
-    cwd: '/tmp/aa'
+    cwd: '/tmp/aa',
   },
   // opts for interactive
   opts = {
     defaultIntervalBetweenInputs: DEFAULT_DEFAULT_INTERVAL_BETWEEN_INPUTS,
-    verbose: false
-  }
+    verbose: false,
+  },
 }: {
   processName: string;
   args: string[];
@@ -78,8 +78,8 @@ export default (async function runInteractive({
 
   let currentInputTimeout;
 
-  const writePromiseTimeout = async (input: InteractiveInput) => {
-    return new Promise(resolve => {
+  const writePromiseTimeout = async (input: InteractiveInput): Promise<void> => {
+    return new Promise((resolve) => {
       const timeout = input.waitInput || actualDefaultIntervalBetweenInputs;
       const inputValue = typeof input.value === 'string' ? input.value : input.value.value;
       currentInputTimeout = setTimeout(() => {
@@ -118,14 +118,14 @@ export default (async function runInteractive({
   let pointer = 0;
   let leftInputsArrays = inputs.length;
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  child.stdout.on('data', chunk => {
+  child.stdout.on('data', (chunk) => {
     const currString = chunk.toString();
     if (pointer < inputs.length) {
       const triggerText = inputs[pointer].triggerText;
       // We remove the eol since sometime interactive frameworks added line breaks if the question is too long
       if (_removeEol(currString).includes(_removeEol(triggerText))) {
         const inputsToWrite = inputs[pointer].inputs;
-        // eslint-disable-next-line promise/catch-or-return
+        // eslint-disable-next-line promise/catch-or-return, @typescript-eslint/no-floating-promises
         writeInputsArray(inputsToWrite).then(() => {
           leftInputsArrays -= 1;
           // Finished to write all - end stream
@@ -143,19 +143,19 @@ export default (async function runInteractive({
 });
 
 function _printInputs(inputsToPrint: InteractiveInputs, actualDefaultIntervalBetweenInputs: number) {
-  const getTriggerOutput = trigger => {
+  const getTriggerOutput = (trigger) => {
     return `${chalk.blue('trigger:')} ${trigger} `;
   };
-  const getInputOutput = input => {
+  const getInputOutput = (input) => {
     const timeout = input.waitInput || actualDefaultIntervalBetweenInputs;
     const label = typeof input.value === 'string' ? input.value : input.value.label;
     return `${label}(${timeout})`;
   };
-  const getInputsOutput = inputs => {
+  const getInputsOutput = (inputs) => {
     const inputsOutput = inputs.map(getInputOutput).join(' ');
     return `${chalk.yellow('inputs:')} ${inputsOutput}`;
   };
-  const getEntryOutput = entry => {
+  const getEntryOutput = (entry) => {
     const triggerOutput = getTriggerOutput(entry.triggerText);
     const inputsOutput = getInputsOutput(entry.inputs);
     return `${triggerOutput} ${inputsOutput}`;

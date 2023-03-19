@@ -1,68 +1,72 @@
+import { BitId, BitIds } from '../bit-id';
 import ComponentWithDependencies from './component-dependencies';
 import ComponentVersion from './component-version';
-import ComponentObjects from './component-objects';
+import { DependenciesNotFound } from './exceptions/dependencies-not-found';
+import { Version } from './models';
 import Repository from './objects/repository';
-import { ManipulateDirItem } from '../consumer/component-ops/manipulate-dir';
+import ConsumerComponent from '../consumer/component';
 
 export default class VersionDependencies {
-  component: ComponentVersion;
-  dependencies: ComponentVersion[];
-  devDependencies: ComponentVersion[];
-  extensionsDependencies: ComponentVersion[];
-  allDependencies: ComponentVersion[];
-  sourceScope: string | null | undefined;
+  constructor(public component: ComponentVersion, public dependencies: ComponentVersion[], public version: Version) {}
 
-  constructor(
-    component: ComponentVersion,
-    dependencies: ComponentVersion[],
-    devDependencies: ComponentVersion[],
-    extensionsDependencies: ComponentVersion[],
-    sourceScope: string
-  ) {
-    this.component = component;
-    this.dependencies = dependencies;
-    this.devDependencies = devDependencies;
-    this.extensionsDependencies = extensionsDependencies;
-    this.allDependencies = [...this.dependencies, ...this.devDependencies, ...this.extensionsDependencies];
-    this.sourceScope = sourceScope;
+  get allDependencies(): ComponentVersion[] {
+    return this.dependencies;
   }
 
-  async toConsumer(
-    repo: Repository,
-    manipulateDirData: ManipulateDirItem[] | null | undefined
-  ): Promise<ComponentWithDependencies> {
-    const depToConsumer = dep => dep.toConsumer(repo, manipulateDirData);
+  get allDependenciesIds(): BitIds {
+    return BitIds.fromArray(this.dependencies.map((dep) => dep.id));
+  }
+
+  getMissingDependencies(): BitId[] {
+    const allDepsIds = this.allDependenciesIds;
+    return this.version.flattenedDependencies.filter((id) => !allDepsIds.has(id));
+  }
+
+  throwForMissingDependencies() {
+    const missing = this.getMissingDependencies();
+    if (missing.length) {
+      throw new DependenciesNotFound(
+        this.component.id.toString(),
+        missing.map((m) => m.toString())
+      );
+    }
+  }
+
+  async toConsumer(repo: Repository): Promise<ComponentWithDependencies> {
+    const depToConsumer = (dep) => dep.toConsumer(repo);
     const dependenciesP = Promise.all(this.dependencies.map(depToConsumer));
-    const devDependenciesP = Promise.all(this.devDependencies.map(depToConsumer));
-    const extensionDependenciesP = Promise.all(this.extensionsDependencies.map(depToConsumer));
-    const componentP = this.component.toConsumer(repo, manipulateDirData);
-    const [component, dependencies, devDependencies, extensionDependencies] = await Promise.all([
-      componentP,
-      dependenciesP,
-      devDependenciesP,
-      extensionDependenciesP
-    ]);
+    const componentP = this.component.toConsumer(repo);
+    const [component, dependencies] = await Promise.all([componentP, dependenciesP]);
     return new ComponentWithDependencies({
       component,
       dependencies,
-      devDependencies,
-      extensionDependencies
+      devDependencies: [],
+      extensionDependencies: [],
+      missingDependencies: this.getMissingDependencies(),
     });
   }
+}
 
-  toObjects(repo: Repository, clientVersion: string | null | undefined): Promise<ComponentObjects> {
-    const depsP = Promise.all(this.allDependencies.map(dep => dep.toObjects(repo, clientVersion)));
-    const compP = this.component.toObjects(repo, clientVersion);
+export async function multipleVersionDependenciesToConsumer(
+  versionDependencies: VersionDependencies[],
+  repo: Repository
+): Promise<ConsumerComponent[]> {
+  const flattenedCompVer: { [id: string]: ComponentVersion } = {};
+  const flattenedConsumerComp: { [id: string]: ConsumerComponent } = {};
 
-    return Promise.all([compP, depsP]).then(([component, dependencies]) => {
-      const flattened = dependencies.reduce((array, compObjects) => {
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        array.push(...compObjects.objects.concat([compObjects.component]));
-        return array;
-      }, []);
-
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      return new ComponentObjects(component.component, flattened.concat(component.objects));
+  versionDependencies.forEach((verDep) => {
+    const allComps = [verDep.component, ...verDep.dependencies];
+    allComps.forEach((compVer) => {
+      flattenedCompVer[compVer.id.toString()] = compVer;
     });
-  }
+  });
+
+  await Promise.all(
+    Object.keys(flattenedCompVer).map(async (idStr) => {
+      flattenedConsumerComp[idStr] = await flattenedCompVer[idStr].toConsumer(repo);
+    })
+  );
+  return versionDependencies.map(
+    (verDep) => flattenedConsumerComp[verDep.component.id.toString()] as ConsumerComponent
+  );
 }

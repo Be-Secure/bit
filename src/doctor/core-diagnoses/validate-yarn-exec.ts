@@ -1,6 +1,5 @@
-import Diagnosis from '../diagnosis';
-import { ExamineBareResult } from '../diagnosis';
 import npmClient from '../../npm-client';
+import Diagnosis, { ExamineBareResult } from '../diagnosis';
 
 export default class ValidateYarnExec extends Diagnosis {
   name = 'validate yarn exec';
@@ -19,12 +18,12 @@ export default class ValidateYarnExec extends Diagnosis {
     const yarnVersion = await npmClient.getYarnVersion();
     if (yarnVersion) {
       return {
-        valid: true
+        valid: true,
       };
     }
     return {
       valid: false,
-      data: {}
+      data: {},
     };
   }
 }

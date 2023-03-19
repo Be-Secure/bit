@@ -1,8 +1,8 @@
 import R from 'ramda';
-import Diagnosis from '../diagnosis';
-import { ExamineBareResult } from '../diagnosis';
+
 import { loadConsumer } from '../../consumer';
 import WorkspaceConfig from '../../consumer/config/workspace-config';
+import Diagnosis, { ExamineBareResult } from '../diagnosis';
 
 export default class ValidateWorkspaceBitJsonSyntax extends Diagnosis {
   name = "validate workspace's bit config";
@@ -25,12 +25,12 @@ export default class ValidateWorkspaceBitJsonSyntax extends Diagnosis {
     try {
       await WorkspaceConfig.loadIfExist(consumerPath);
       return {
-        valid: true
+        valid: true,
       };
-    } catch (e) {
+    } catch (e: any) {
       return {
         valid: false,
-        data: {}
+        data: {},
       };
     }
   }

@@ -1,18 +1,19 @@
 import { inflateSync } from 'zlib';
-import Repository from './repository';
-import { deflate, inflate, sha1 } from '../../utils';
-import { NULL_BYTE, SPACE_DELIMITER } from '../../constants';
-import Ref from './ref';
-// import logger from '../../logger/logger';
 
-function parse(buffer: Buffer, types: { [key: string]: Function }): BitObject {
+import { NULL_BYTE, SPACE_DELIMITER } from '../../constants';
+import { deflate, inflate, sha1 } from '../../utils';
+import { typesObj as types } from '../object-registrar';
+import { ObjectItem } from './object-list';
+import Ref from './ref';
+import Repository from './repository';
+
+function parse(buffer: Buffer): BitObject {
   const firstNullByteLocation = buffer.indexOf(NULL_BYTE);
   const headers = buffer.slice(0, firstNullByteLocation).toString();
   const contents = buffer.slice(firstNullByteLocation + 1, buffer.length);
-  const [type] = headers.split(SPACE_DELIMITER);
-
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  return types[type].parse(contents);
+  const [type, hash] = headers.split(SPACE_DELIMITER);
+  if (!types[type]) throw new Error(`BitObject: unable to find subclass "${type}"`);
+  return types[type].parse(contents, hash);
 }
 
 export default class BitObject {
@@ -30,28 +31,44 @@ export default class BitObject {
     return [];
   }
 
+  getType(): string {
+    return this.constructor.name;
+  }
+
   getHeader(buffer: Buffer): string {
-    return `${this.constructor.name} ${this.hash().toString()} ${buffer.toString().length}${NULL_BYTE}`;
+    return `${this.getType()} ${this.hash().toString()} ${buffer.toString().length}${NULL_BYTE}`;
   }
 
   async collectRefs(repo: Repository): Promise<Ref[]> {
     const refsCollection = [];
+    const objectType = this.getType();
+    const objectId = objectType === 'Component' ? `Component ${this.id()}` : objectType;
 
     async function addRefs(object: BitObject) {
       const refs = object.refs();
-      const objs = await Promise.all(refs.map(ref => ref.load(repo, true)));
+      let objs;
+      try {
+        objs = await Promise.all(refs.map((ref) => ref.load(repo, true)));
+      } catch (err: any) {
+        if (err.code === 'ENOENT') {
+          throw new Error(`failed finding an object file required by ${object.constructor.name} object, originated from ${objectId}
+path: ${err.path}`);
+        }
+        throw err;
+      }
+
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       refsCollection.push(...refs);
-      await Promise.all(objs.map(obj => addRefs(obj)));
+      await Promise.all(objs.map((obj) => addRefs(obj)));
     }
 
     await addRefs(this);
     return refsCollection;
   }
 
-  async collectRaw(repo: Repository): Promise<Buffer[]> {
+  async collectRaw(repo: Repository): Promise<ObjectItem[]> {
     const refs = await this.collectRefs(repo);
-    return Promise.all(refs.map(ref => ref.loadRaw(repo)));
+    return repo.loadManyRaw(refs);
   }
 
   asRaw(repo: Repository): Promise<Buffer> {
@@ -62,12 +79,12 @@ export default class BitObject {
     const objects: BitObject[] = [];
 
     function addRefs(object: BitObject) {
-      const objs = object.refs().map(ref => {
+      const objs = object.refs().map((ref) => {
         return ref.loadSync(repo);
       });
 
-      objects.concat(objs);
-      objs.forEach(obj => addRefs(obj));
+      objects.push(...objs);
+      objs.forEach((obj) => addRefs(obj));
     }
 
     addRefs(this);
@@ -94,8 +111,9 @@ export default class BitObject {
   /**
    * see `this.parseSync` for the sync version
    */
-  static parseObject(fileContents: Buffer, types: { [key: string]: Function }): Promise<BitObject> {
-    return inflate(fileContents).then(buffer => parse(buffer, types));
+  static async parseObject(fileContents: Buffer, filePath?: string): Promise<BitObject> {
+    const buffer = await inflate(fileContents, filePath);
+    return parse(buffer);
   }
 
   // static parse(fileContents: Buffer, types: { [key: string]: Function }): Promise<BitObject> {
@@ -105,9 +123,9 @@ export default class BitObject {
   /**
    * prefer using `this.parseObject()`, unless it must be sync.
    */
-  static parseSync(fileContents: Buffer, types: { [key: string]: Function }): BitObject {
+  static parseSync(fileContents: Buffer): BitObject {
     const buffer = inflateSync(fileContents);
-    return parse(buffer, types);
+    return parse(buffer);
   }
 
   static makeHash(str: string | Buffer): string {

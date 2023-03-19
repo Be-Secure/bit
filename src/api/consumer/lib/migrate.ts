@@ -1,7 +1,7 @@
-import { loadScope } from '../../../scope';
 import { loadConsumerIfExist } from '../../../consumer';
 import logger from '../../../logger/logger';
 import { MigrationResult } from '../../../migration/migration-helper';
+import { loadScope, Scope } from '../../../scope';
 
 /**
  * Running migration process for consumer and / or scope - to update the stores (bitObjects, bit.map.json) to the current version
@@ -11,16 +11,16 @@ import { MigrationResult } from '../../../migration/migration-helper';
  * @param {boolean} verbose - print debug logs
  * @returns {Promise<MigrationResult>} - wether the process run and wether it successeded
  */
-export default (async function migrate(
+export default async function migrate(
   scopePath: string,
   verbose: boolean
 ): Promise<MigrationResult | null | undefined> {
-  logger.silly('migrate.migrate, starting migration process');
+  logger.trace('migrate.migrate, starting migration process');
   if (verbose) console.log('starting migration process'); // eslint-disable-line no-console
-  let scope;
+  let scope: Scope;
   // If a scope path provided we will run the migrate only for the scope
   if (scopePath) {
-    logger.silly(`migrate.migrate, running migration process for scope in path ${scopePath}`);
+    logger.trace(`migrate.migrate, running migration process for scope in path ${scopePath}`);
     if (verbose) console.log(`running migration process for scope in path ${scopePath}`); // eslint-disable-line no-console
     scope = await loadScope(scopePath);
     return scope.migrate(verbose);
@@ -34,7 +34,7 @@ export default (async function migrate(
   await consumer.migrate(verbose);
   // const consumerMigrationResult = await consumer.migrate(verbose);
   // if (!consumerMigrationResult)
-  logger.silly('migrate.migrate, running migration process for scope in consumer');
+  logger.trace('migrate.migrate, running migration process for scope in consumer');
   if (verbose) console.log('running migration process for scope in consumer'); // eslint-disable-line no-console
   return scope.migrate(verbose);
-});
+}

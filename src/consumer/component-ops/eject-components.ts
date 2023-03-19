@@ -9,19 +9,19 @@
  * removing the component files, so then it's easier to rollback.
  */
 import R from 'ramda';
-import { BitIds, BitId } from '../../bit-id';
+
 import { Consumer } from '..';
-import * as packageJsonUtils from '../component/package-json-utils';
-import { installPackages } from '../../npm-client/install-packages';
-import logger from '../../logger/logger';
+import { BitId, BitIds } from '../../bit-id';
 import defaultErrorHandler from '../../cli/default-error-handler';
-import { getScopeRemotes } from '../../scope/scope-remotes';
-import PackageJsonFile from '../component/package-json-file';
-import ComponentVersion from '../../scope/component-version';
-import deleteComponentsFiles from './delete-component-files';
+import logger from '../../logger/logger';
+import { installPackages } from '../../npm-client/install-packages';
 import DependencyGraph from '../../scope/graph/scope-graph';
-import Component from '../component/consumer-component';
+import { getScopeRemotes } from '../../scope/scope-remotes';
 import componentIdToPackageName from '../../utils/bit/component-id-to-package-name';
+import Component from '../component/consumer-component';
+import PackageJsonFile from '../component/package-json-file';
+import * as packageJsonUtils from '../component/package-json-utils';
+import deleteComponentsFiles from './delete-component-files';
 
 export type EjectResults = {
   ejectedComponents: BitIds;
@@ -39,7 +39,8 @@ export default class EjectComponents {
   consumer: Consumer;
   componentsIds: BitId[];
   force: boolean;
-  componentsToEject: BitIds;
+  idsToEject: BitIds;
+  componentsToEject: Component[] = [];
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   notEjectedDependents: Array<{ dependent: Component; ejectedDependencies: Component[] }>;
   failedComponents: FailedComponents;
@@ -49,19 +50,20 @@ export default class EjectComponents {
     this.consumer = consumer;
     this.componentsIds = componentsIds;
     this.force = force || false;
-    this.componentsToEject = new BitIds();
+    this.idsToEject = new BitIds();
     this.failedComponents = {
       modifiedComponents: new BitIds(),
       stagedComponents: new BitIds(),
       notExportedComponents: new BitIds(),
-      selfHostedExportedComponents: new BitIds()
+      selfHostedExportedComponents: new BitIds(),
     };
   }
 
   async eject(): Promise<EjectResults> {
     await this.decideWhichComponentsToEject();
-    logger.debugAndAddBreadCrumb('eject-components.eject', `${this.componentsToEject.length} to eject`);
-    if (this.componentsToEject.length) {
+    logger.debugAndAddBreadCrumb('eject-components.eject', `${this.idsToEject.length} to eject`);
+    await this.loadComponentsToEject();
+    if (this.idsToEject.length) {
       this._validateIdsHaveScopesAndVersions();
       await this.findNonEjectedDependents();
       await this.loadPackageJsonFilesForPotentialRollBack();
@@ -72,8 +74,8 @@ export default class EjectComponents {
     }
     logger.debug('eject: completed successfully');
     return {
-      ejectedComponents: this.componentsToEject,
-      failedComponents: this.failedComponents
+      ejectedComponents: this.idsToEject,
+      failedComponents: this.failedComponents,
     };
   }
 
@@ -86,26 +88,24 @@ export default class EjectComponents {
     const graph = await DependencyGraph.buildGraphFromCurrentlyUsedComponents(this.consumer);
     const scopeGraph = new DependencyGraph(graph);
     const notEjectedData: Array<{ id: BitId; dependencies: BitId[] }> = [];
-    this.componentsToEject.forEach(componentId => {
+    this.idsToEject.forEach((componentId) => {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       const dependents: BitId[] = scopeGraph.getImmediateDependentsPerId(componentId, true);
-      const notEjectedDependents: BitId[] = dependents.filter(
-        d => !this.componentsToEject.hasWithoutScopeAndVersion(d)
-      );
+      const notEjectedDependents: BitId[] = dependents.filter((d) => !this.idsToEject.hasWithoutScopeAndVersion(d));
       notEjectedDependents.forEach((dependentId: BitId) => {
-        const foundInNotEjectedData = notEjectedData.find(d => d.id.isEqual(dependentId));
+        const foundInNotEjectedData = notEjectedData.find((d) => d.id.isEqual(dependentId));
         if (foundInNotEjectedData) foundInNotEjectedData.dependencies.push(componentId);
         else notEjectedData.push({ id: dependentId, dependencies: [componentId] });
       });
     });
-    const notEjectedComponentsDataP = notEjectedData.map(async notEjectedItem => {
+    const notEjectedComponentsDataP = notEjectedData.map(async (notEjectedItem) => {
       const dependent = await this.consumer.loadComponent(notEjectedItem.id);
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       const { components: ejectedDependencies } = await this.consumer.loadComponents(notEjectedItem.dependencies);
       return { dependent, ejectedDependencies };
     });
     const notEjectedComponentsData = await Promise.all(notEjectedComponentsDataP);
-    this.notEjectedDependents = notEjectedComponentsData.filter(d => d.dependent.packageJsonFile);
+    this.notEjectedDependents = notEjectedComponentsData.filter((d) => d.dependent.packageJsonFile);
   }
 
   async loadPackageJsonFilesForPotentialRollBack() {
@@ -123,22 +123,22 @@ export default class EjectComponents {
     if (R.isEmpty(this.componentsIds)) return;
     const remotes = await getScopeRemotes(this.consumer.scope);
     const hubExportedComponents = new BitIds();
-    this.componentsIds.forEach(bitId => {
+    this.componentsIds.forEach((bitId) => {
       if (!bitId.hasScope()) this.failedComponents.notExportedComponents.push(bitId);
-      else if (remotes.isHub(bitId.scope)) hubExportedComponents.push(bitId);
+      else if (remotes.isHub(bitId.scope as string)) hubExportedComponents.push(bitId);
       else this.failedComponents.selfHostedExportedComponents.push(bitId);
     });
     if (this.force) {
-      this.componentsToEject = hubExportedComponents;
+      this.idsToEject = hubExportedComponents;
     } else {
       await Promise.all(
-        hubExportedComponents.map(async id => {
+        hubExportedComponents.map(async (id) => {
           try {
             const componentStatus = await this.consumer.getComponentStatusById(id);
             if (componentStatus.modified) this.failedComponents.modifiedComponents.push(id);
             else if (componentStatus.staged) this.failedComponents.stagedComponents.push(id);
-            else this.componentsToEject.push(id);
-          } catch (err) {
+            else this.idsToEject.push(id);
+          } catch (err: any) {
             this.throwEjectError(
               `eject operation failed getting the status of ${id.toString()}, no action has been done.
             please fix the issue to continue.`,
@@ -150,12 +150,17 @@ export default class EjectComponents {
     }
   }
 
+  async loadComponentsToEject() {
+    const { components } = await this.consumer.loadComponents(this.idsToEject);
+    this.componentsToEject = components;
+  }
+
   async removeComponentsFromPackageJsonAndNodeModules() {
     const action = 'removing the existing components from package.json and node_modules';
     try {
       logger.debugAndAddBreadCrumb('eject', action);
       await packageJsonUtils.removeComponentsFromWorkspacesAndDependencies(this.consumer, this.componentsToEject);
-    } catch (err) {
+    } catch (err: any) {
       logger.warn(`eject: failed ${action}, restoring package.json`);
       await this.rollBack(action);
       this.throwEjectError(this._buildExceptionMessageWithRollbackData(action), err);
@@ -166,18 +171,10 @@ export default class EjectComponents {
     const action = 'adding the components as packages into package.json';
     try {
       logger.debugAndAddBreadCrumb('eject', action);
-      const componentsVersions = await Promise.all(
-        this.componentsToEject.map(async bitId => {
-          const modelComponent = await this.consumer.scope.getModelComponent(bitId);
-          // $FlowFixMe componentsToEject has scope and version, see @_validateIdsHaveScopesAndVersions
-          // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-          return new ComponentVersion(modelComponent, bitId.version);
-        })
-      );
-      await packageJsonUtils.addComponentsWithVersionToRoot(this.consumer, componentsVersions);
+      await packageJsonUtils.addComponentsWithVersionToRoot(this.consumer, this.componentsToEject);
       this.notEjectedDependents.forEach(({ dependent, ejectedDependencies }) => {
         const dependenciesToReplace = ejectedDependencies.reduce((acc, dependency) => {
-          const packageName = componentIdToPackageName(dependency.id, dependency.bindingPrefix);
+          const packageName = componentIdToPackageName(dependency);
           acc[packageName] = dependency.version;
           return acc;
         }, {});
@@ -188,7 +185,7 @@ export default class EjectComponents {
       // $FlowFixMe notEjectedDependents has only dependents with packageJsonFile
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       await Promise.all(this.notEjectedDependents.map(({ dependent }) => dependent.packageJsonFile.write()));
-    } catch (err) {
+    } catch (err: any) {
       logger.error(`eject: failed ${action}, restoring package.json`, err);
       await this.rollBack(action);
       this.throwEjectError(this._buildExceptionMessageWithRollbackData(action), err);
@@ -203,9 +200,9 @@ export default class EjectComponents {
       const dirs: string[] = this.notEjectedDependents // $FlowFixMe componentMap must be set for authored and imported
         // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
         .map(({ dependent }) => dependent.componentMap.rootDir)
-        .filter(x => x);
+        .filter((x) => x);
       await installPackages(this.consumer, dirs, true, true);
-    } catch (err) {
+    } catch (err: any) {
       await this.rollBack(action);
       this.throwEjectError(this._buildExceptionMessageWithRollbackData(action), err);
     }
@@ -213,7 +210,7 @@ export default class EjectComponents {
 
   async rollBack(action: string): Promise<void> {
     await Promise.all(
-      this.packageJsonFilesBeforeChanges.map(async packageJsonFile => {
+      this.packageJsonFilesBeforeChanges.map(async (packageJsonFile) => {
         if (packageJsonFile.fileExist) {
           logger.warn(`eject: failed ${action}, restoring package.json at ${packageJsonFile.filePath}`);
           await packageJsonFile.write();
@@ -233,7 +230,7 @@ your package.json (if existed) has been restored, however, some bit generated da
     try {
       logger.debug('eject: removing the components files from the filesystem');
       await this.removeLocalComponents();
-    } catch (err) {
+    } catch (err: any) {
       this.throwEjectError(
         `eject operation has installed your components successfully using the NPM client.
 however, it failed removing the old components from the filesystem.
@@ -254,8 +251,8 @@ please use bit remove command to remove them.`,
     // not used anywhere else. Because this is part of the eject operation, the user probably
     // gets the dependencies as npm packages so we don't need to worry much about have extra
     // dependencies on the filesystem
-    await deleteComponentsFiles(this.consumer, this.componentsToEject, true);
-    await this.consumer.cleanFromBitMap(this.componentsToEject, new BitIds());
+    await deleteComponentsFiles(this.consumer, this.idsToEject);
+    await this.consumer.cleanFromBitMap(this.idsToEject);
   }
 
   throwEjectError(message: string, originalError: Error) {
@@ -267,7 +264,7 @@ got the following error: ${originalErrorMessage}`);
   }
 
   _validateIdsHaveScopesAndVersions() {
-    this.componentsToEject.forEach(id => {
+    this.idsToEject.forEach((id) => {
       if (!id.hasScope() || !id.hasVersion()) {
         throw new TypeError(`EjectComponents expects ids with scope and version, got ${id.toString()}`);
       }

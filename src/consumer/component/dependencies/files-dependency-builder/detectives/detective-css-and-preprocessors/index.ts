@@ -26,13 +26,13 @@ function detective(fileContent, syntax) {
     onParseError(error) {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       handleError(error);
-    }
+    },
   });
 
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   detective.ast = ast;
 
-  csstree.walk(ast, function(node) {
+  csstree.walk(ast, function (node) {
     if (!isImportStatement(node)) {
       return;
     }
@@ -45,7 +45,7 @@ function detective(fileContent, syntax) {
 }
 
 function isImportStatement(node) {
-  if (node.type === 'Atrule' && node.name === 'import') {
+  if (node.type === 'Atrule' && (node.name === 'import' || node.name === 'use' || node.name === 'forward')) {
     return true;
   }
   return false;
@@ -60,6 +60,34 @@ function extractDependencies(importStatementNode) {
     return importStatementNode.prelude.children.tail.data.value.value.replace(/["']/g, '');
   }
 
+  // @use and @forward of scss/sass syntax
+  if (
+    (importStatementNode.name === 'use' || importStatementNode.name === 'forward') &&
+    importStatementNode.prelude.type === 'AtrulePrelude' &&
+    importStatementNode.prelude.children?.head?.data
+  ) {
+    const getDepName = () => {
+      const headData = importStatementNode.prelude.children?.head?.data;
+      if (headData.type === 'String' && headData.value) return headData.value;
+      if (headData.type === 'Identifier' && headData.name) return headData.name;
+      return null;
+    };
+    const removeQuotes = (dep) => dep.replace(/["']/g, '');
+
+    const parseDepName = (dep?: string) => {
+      if (!dep) return undefined;
+      if (!dep.includes(':')) return removeQuotes(dep);
+      const pkgName = removeQuotes(dep.split(':')[0]);
+      if (pkgName === 'sass') return undefined; // it's a built-in module
+      return pkgName;
+    };
+    const depNameRaw = getDepName();
+    const depName = parseDepName(depNameRaw);
+    if (!depName) return [];
+
+    return depName;
+  }
+
   // simple @import
   if (
     importStatementNode.prelude.type === 'AtrulePrelude' &&
@@ -72,11 +100,8 @@ function extractDependencies(importStatementNode) {
   // allows imports with no semicolon
   if (importStatementNode.prelude.type === 'Raw' && importStatementNode.prelude.value.includes('@import')) {
     let imports = importStatementNode.prelude.value.split('@import');
-    imports = imports.map(imp => {
-      return imp
-        .replace(/["']/g, '')
-        .replace(/\n/g, '')
-        .replace(/\s/g, '');
+    imports = imports.map((imp) => {
+      return imp.replace(/["']/g, '').replace(/\n/g, '').replace(/\s/g, '');
     });
 
     return imports;
@@ -86,11 +111,8 @@ function extractDependencies(importStatementNode) {
   if (importStatementNode.prelude.type === 'Raw' && importStatementNode.prelude.value.includes(',')) {
     importStatementNode.prelude.value = clearLessImportsRules(importStatementNode.prelude.value);
     let imports = importStatementNode.prelude.value.split(',');
-    imports = imports.map(imp => {
-      return imp
-        .replace(/["']/g, '')
-        .replace(/\n/g, '')
-        .replace(/\s/g, '');
+    imports = imports.map((imp) => {
+      return imp.replace(/["']/g, '').replace(/\n/g, '').replace(/\s/g, '');
     });
 
     return imports;
@@ -107,7 +129,7 @@ function extractDependencies(importStatementNode) {
 function clearLessImportsRules(importString) {
   // list from http://lesscss.org/features/#import-atrules-feature-import-options
   const lessImportOptions = ['reference', 'inline', 'less', 'css', 'once', 'multiple', 'optional'];
-  const toClearSepicalImports = lessImportOptions.some(imp => {
+  const toClearSepicalImports = lessImportOptions.some((imp) => {
     if (importString.includes(imp)) {
       return true;
     }
@@ -118,14 +140,11 @@ function clearLessImportsRules(importString) {
     importString = importString.replace(/ *\([^)]*\) */g, '');
   }
 
-  return importString
-    .replace(/["']/g, '')
-    .replace(/\n/g, '')
-    .replace(/\s/g, '');
+  return importString.replace(/["']/g, '').replace(/\n/g, '').replace(/\s/g, '');
 }
 
 function clearUrlImports(dependencies) {
-  dependencies = dependencies.map(imp => {
+  dependencies = dependencies.map((imp) => {
     if (isUrl(imp)) {
       return null;
     }

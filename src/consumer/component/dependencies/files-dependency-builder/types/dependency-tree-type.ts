@@ -1,5 +1,5 @@
-import { BitId } from '../../../../../bit-id';
-import { PathLinuxAbsolute } from '../../../../../utils/path';
+import R from 'ramda';
+import { ResolvedPackageData } from '../../../../../utils/packages';
 
 /**
  * Import Specifier data.
@@ -25,7 +25,7 @@ export type ImportSpecifier = {
 export type FileObject = {
   file: string;
   importSpecifiers?: ImportSpecifier[];
-  importSource: string;
+  importSource?: string;
   isCustomResolveUsed?: boolean;
   isLink?: boolean;
   linkDependencies?: Record<string, any>[];
@@ -36,30 +36,30 @@ export type LinkFile = {
   importSpecifiers: ImportSpecifier[];
 };
 
-type MissingType = 'files' | 'packages' | 'bits';
+type MissingType = 'files' | 'packages' | 'components';
 
-export interface ResolvedNodePackage {
-  fullPath?: PathLinuxAbsolute;
-  name: string;
-  // Version from the package.json of the package itself
-  concreteVersion?: string;
-  // Version from the dependent package.json
-  versionUsedByDependent?: string;
-  // add the component id in case it's a bit component
-  componentId?: BitId;
-}
-
-export type DependenciesResults = {
-  files?: FileObject[];
-  packages?: { [packageName: string]: string }; // pkgName: pkgVersion
-  unidentifiedPackages?: string[];
-  bits?: Array<ResolvedNodePackage>;
+export class DependenciesTreeItem {
+  files: FileObject[] = [];
+  packages: { [packageName: string]: string } = {}; // pkgName: pkgVersion
+  unidentifiedPackages: string[] = [];
+  components: ResolvedPackageData[] = [];
   error?: Error; // error.code is either PARSING_ERROR or RESOLVE_ERROR
   missing?: { [key in MissingType]: string[] };
-};
 
-export type Tree = {
-  [filePath: string]: DependenciesResults;
+  isEmpty() {
+    return (
+      !this.files.length &&
+      R.isEmpty(this.packages) &&
+      !this.unidentifiedPackages.length &&
+      !this.components.length &&
+      !this.error &&
+      !this.missing
+    );
+  }
+}
+
+export type DependenciesTree = {
+  [filePath: string]: DependenciesTreeItem;
 };
 
 export type ResolveModulesConfig = {
@@ -69,7 +69,7 @@ export type ResolveModulesConfig = {
 };
 
 export type DependencyTreeParams = {
-  baseDir: string;
+  componentDir: string;
   workspacePath: string;
   filePaths: string[];
   bindingPrefix: string;

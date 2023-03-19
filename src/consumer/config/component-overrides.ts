@@ -1,28 +1,31 @@
 import R from 'ramda';
+import { pickBy } from 'lodash';
+
+import { BitId } from '../../bit-id';
+import {
+  MANUALLY_ADD_DEPENDENCY,
+  MANUALLY_REMOVE_DEPENDENCY,
+  OVERRIDE_COMPONENT_PREFIX,
+  OVERRIDE_FILE_PREFIX,
+} from '../../constants';
+import { SourceFile } from '../component/sources';
 import ComponentConfig from './component-config';
 import {
-  MANUALLY_REMOVE_DEPENDENCY,
-  MANUALLY_ADD_DEPENDENCY,
-  OVERRIDE_FILE_PREFIX,
-  OVERRIDE_COMPONENT_PREFIX,
-  DEPENDENCIES_FIELDS,
-  COMPONENT_ORIGINS
-} from '../../constants';
-import { ConsumerOverridesOfComponent } from './consumer-overrides';
-import { overridesBitInternalFields, nonPackageJsonFields, overridesForbiddenFields } from './consumer-overrides';
-import { ILegacyWorkspaceConfig } from './legacy-workspace-config-interface';
-import { BitId } from '../../bit-id';
-import { ComponentOrigin } from '../bit-map/component-map';
+  ConsumerOverridesOfComponent,
+  nonPackageJsonFields,
+  overridesBitInternalFields,
+  overridesForbiddenFields,
+} from './consumer-overrides';
 import { ExtensionDataList } from './extension-data';
-import { filterObject } from '../../utils';
+import { ILegacyWorkspaceConfig } from './legacy-workspace-config-interface';
 
 // consumer internal fields should not be used in component overrides, otherwise, they might conflict upon import
 export const componentOverridesForbiddenFields = [...overridesForbiddenFields, ...overridesBitInternalFields];
 
 export type DependenciesOverridesData = {
-  dependencies?: Record<string, any>;
-  devDependencies?: Record<string, any>;
-  peerDependencies?: Record<string, any>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
 export type ComponentOverridesData = DependenciesOverridesData & {
@@ -37,7 +40,7 @@ export default class ComponentOverrides {
     this.overrides = overrides || {};
   }
   static componentOverridesLoadingRegistry: OverridesLoadRegistry = {};
-  static registerOnComponentOverridesLoading(extId, func: (id, config) => any) {
+  static registerOnComponentOverridesLoading(extId, func: (id, config, legacyFiles) => any) {
     this.componentOverridesLoadingRegistry[extId] = func;
   }
 
@@ -68,33 +71,29 @@ export default class ComponentOverrides {
     workspaceConfig: ILegacyWorkspaceConfig,
     overridesFromModel: ComponentOverridesData | undefined,
     componentConfig: ComponentConfig,
-    origin: ComponentOrigin
+    files: SourceFile[]
   ): Promise<ComponentOverrides> {
-    const isAuthor = origin === COMPONENT_ORIGINS.AUTHORED;
-    const isNotNested = origin !== COMPONENT_ORIGINS.NESTED;
     // overrides from consumer-config is not relevant and should not affect imported
-    let legacyOverridesFromConsumer = isNotNested ? workspaceConfig?.getComponentConfig(componentId) : null;
+    let legacyOverridesFromConsumer = workspaceConfig?.getComponentConfig(componentId);
 
-    if (isAuthor) {
-      const plainLegacy = workspaceConfig?._legacyPlainObject();
-      if (plainLegacy && plainLegacy.env) {
-        legacyOverridesFromConsumer = legacyOverridesFromConsumer || {};
-        legacyOverridesFromConsumer.env = {};
-        legacyOverridesFromConsumer.env.compiler = plainLegacy.env.compiler;
-        legacyOverridesFromConsumer.env.tester = plainLegacy.env.tester;
-      }
+    const plainLegacy = workspaceConfig?._legacyPlainObject();
+    if (plainLegacy && plainLegacy.env) {
+      legacyOverridesFromConsumer = legacyOverridesFromConsumer || {};
     }
 
     const getFromComponent = (): ComponentOverridesData | null | undefined => {
       if (componentConfig && componentConfig.componentHasWrittenConfig) {
         return componentConfig.overrides;
       }
-      return isAuthor ? null : overridesFromModel;
+      // @todo: we might consider using overridesFromModel here.
+      // return isAuthor ? null : overridesFromModel;
+      return null;
     };
-
     const extensionsAddedOverrides = await runOnLoadOverridesEvent(
       this.componentOverridesLoadingRegistry,
-      componentConfig.parseExtensions()
+      componentConfig.parseExtensions(),
+      componentId,
+      files
     );
     const mergedLegacyConsumerOverridesWithExtensions = mergeOverrides(
       legacyOverridesFromConsumer || {},
@@ -156,88 +155,25 @@ export default class ComponentOverrides {
     return ver !== MANUALLY_ADD_DEPENDENCY && ver !== MANUALLY_REMOVE_DEPENDENCY;
   }
   getIgnored(field: string): string[] {
-    return R.keys(R.filter(dep => dep === MANUALLY_REMOVE_DEPENDENCY, this.overrides[field] || {}));
+    return R.keys(R.filter((dep) => dep === MANUALLY_REMOVE_DEPENDENCY, this.overrides[field] || {}));
   }
   getIgnoredFiles(field: string): string[] {
     const ignoredRules = this.getIgnored(field);
     return ignoredRules
-      .filter(rule => rule.startsWith(OVERRIDE_FILE_PREFIX))
-      .map(rule => rule.replace(OVERRIDE_FILE_PREFIX, ''));
-  }
-  getIgnoredComponents(field: string): string[] {
-    const ignoredRules = this.getIgnored(field);
-    return R.flatten(
-      ignoredRules
-        .filter(rule => rule.startsWith(OVERRIDE_COMPONENT_PREFIX))
-        .map(rule => rule.replace(OVERRIDE_COMPONENT_PREFIX, ''))
-        .map(idStr => [idStr, ...this._getComponentNamesFromPackages(idStr)])
-    );
+      .filter((rule) => rule.startsWith(OVERRIDE_FILE_PREFIX))
+      .map((rule) => rule.replace(OVERRIDE_FILE_PREFIX, ''));
   }
 
-  // TODO: This strategy should be stopped using since harmony, because a package name
-  // TODO: might be completely different than a component id
-  // TODO: instead we should go to the package.json and check the component name there
-  // TODO: Like we do in build-tree.resolveNodePackage
-  // TODO: or use some index that store it (doesn't exist at the moment)
-  /**
-   * it is possible that a user added the component into the overrides as a package.
-   * e.g. `@bit/david.utils.is-string` instead of `@bit/david.utils/is-string`
-   * or, if not using bit.dev, `@bit/utils.is-string` instead of `@bit/utils/is-string`
-   */
-  _getComponentNamesFromPackages(idStr: string): string[] {
-    const idSplitByDot = idStr.split('.');
-    const numberOfDots = idSplitByDot.length - 1;
-    if (numberOfDots === 0) return []; // nothing to do. it wasn't entered as a package
-    const localScopeComponent = idSplitByDot.join('/'); // convert all dots to slashes
-    if (numberOfDots === 1) {
-      // it can't be from bit.dev, it must be locally
-      return [localScopeComponent];
-    }
-    // there are two dots or more. it can be from bit.dev and it can be locally
-    // for a remoteScopeComponent, leave the first dot and convert only the rest to a slash
-    const remoteScopeComponent = `${R.head(idSplitByDot)}.${R.tail(idSplitByDot).join('/')}`;
-    return [localScopeComponent, remoteScopeComponent];
-  }
   getIgnoredPackages(field: string): string[] {
     const ignoredRules = this.getIgnored(field);
-    return ignoredRules.filter(
-      rule => !rule.startsWith(OVERRIDE_FILE_PREFIX) && !rule.startsWith(OVERRIDE_COMPONENT_PREFIX)
-    );
-  }
-  stripOriginallySharedDir(sharedDir: string | null | undefined) {
-    if (!sharedDir) return;
-    DEPENDENCIES_FIELDS.forEach(field => {
-      if (!this.overrides[field]) return;
-      Object.keys(this.overrides[field]).forEach(rule => {
-        if (!rule.startsWith(OVERRIDE_FILE_PREFIX)) return;
-        const fileWithSharedDir = rule.replace(OVERRIDE_FILE_PREFIX, '');
-        const fileWithoutSharedDir = fileWithSharedDir.replace(`${sharedDir}/`, '');
-        const value = this.overrides[field][rule];
-        delete this.overrides[field][rule];
-        this.overrides[field][`${OVERRIDE_FILE_PREFIX}${fileWithoutSharedDir}`] = value;
-      });
-    });
-  }
-  addOriginallySharedDir(sharedDir: string | null | undefined) {
-    if (!sharedDir) return;
-    DEPENDENCIES_FIELDS.forEach(field => {
-      if (!this.overrides[field]) return;
-      Object.keys(this.overrides[field]).forEach(rule => {
-        if (!rule.startsWith(OVERRIDE_FILE_PREFIX)) return;
-        const fileWithoutSharedDir = rule.replace(OVERRIDE_FILE_PREFIX, '');
-        const fileWithSharedDir = `${sharedDir}/${fileWithoutSharedDir}`;
-        const value = this.overrides[field][rule];
-        delete this.overrides[field][rule];
-        this.overrides[field][`${OVERRIDE_FILE_PREFIX}${fileWithSharedDir}`] = value;
-      });
-    });
+    return ignoredRules.filter((rule) => !rule.startsWith(OVERRIDE_FILE_PREFIX));
   }
   static getAllFilesPaths(overrides: Record<string, any>): string[] {
     if (!overrides) return [];
     const allDeps = Object.assign({}, overrides.dependencies, overrides.devDependencies, overrides.peerDependencies);
     return Object.keys(allDeps)
-      .filter(rule => rule.startsWith(OVERRIDE_FILE_PREFIX))
-      .map(rule => rule.replace(OVERRIDE_FILE_PREFIX, ''));
+      .filter((rule) => rule.startsWith(OVERRIDE_FILE_PREFIX))
+      .map((rule) => rule.replace(OVERRIDE_FILE_PREFIX, ''));
   }
   clone(): ComponentOverrides {
     return new ComponentOverrides(R.clone(this.overrides));
@@ -250,8 +186,8 @@ function mergeOverrides(
 ): ComponentOverridesData {
   // Make sure to not mutate the original object
   const result = R.clone(overrides1);
-  const isObjectAndNotArray = val => typeof val === 'object' && !Array.isArray(val);
-  Object.keys(overrides2 || {}).forEach(field => {
+  const isObjectAndNotArray = (val) => typeof val === 'object' && !Array.isArray(val);
+  Object.keys(overrides2 || {}).forEach((field) => {
     // Do not merge internal fields
     if (overridesBitInternalFields.includes(field)) {
       return; // do nothing
@@ -286,16 +222,18 @@ function mergeExtensionsOverrides(configs: DependenciesOverridesData[]): any {
  */
 async function runOnLoadOverridesEvent(
   configsRegistry: OverridesLoadRegistry,
-  extensions: ExtensionDataList
+  extensions: ExtensionDataList,
+  id: BitId,
+  files: SourceFile[]
 ): Promise<DependenciesOverridesData> {
-  const extensionsAddedOverridesP = Object.keys(configsRegistry).map(extId => {
+  const extensionsAddedOverridesP = Object.keys(configsRegistry).map((extId) => {
     // TODO: only running func for relevant extensions
     const func = configsRegistry[extId];
-    return func(extensions);
+    return func(extensions, id, files);
   });
   const extensionsAddedOverrides = await Promise.all(extensionsAddedOverridesP);
   let extensionsConfigModificationsObject = mergeExtensionsOverrides(extensionsAddedOverrides);
-  const filterFunc = val => !R.isEmpty(val);
-  extensionsConfigModificationsObject = filterObject(extensionsConfigModificationsObject, filterFunc);
+  const filterFunc = (val) => !R.isEmpty(val);
+  extensionsConfigModificationsObject = pickBy(extensionsConfigModificationsObject, filterFunc);
   return extensionsConfigModificationsObject;
 }

@@ -1,7 +1,8 @@
 import fs from 'fs-extra';
-import AbstractVinyl from './abstract-vinyl';
+
 import ValidationError from '../../../error/validation-error';
 import logger from '../../../logger/logger';
+import AbstractVinyl from './abstract-vinyl';
 
 export default class JSONFile extends AbstractVinyl {
   override = false;
@@ -33,7 +34,7 @@ export default class JSONFile extends AbstractVinyl {
     base,
     path,
     content,
-    override = false
+    override = false,
   }: {
     base: string;
     path: string;

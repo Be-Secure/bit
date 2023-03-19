@@ -1,13 +1,28 @@
 /* eslint no-console: 0 */
 
-import * as path from 'path';
 import fs from 'fs-extra';
+import * as path from 'path';
+import * as yaml from 'yaml';
+import * as ini from 'ini';
+import { IS_WINDOWS } from '../constants';
 import { InteractiveInputs } from '../interactive/utils/run-interactive-cmd';
+import { generateRandomStr } from '../utils';
+import createSymlinkOrCopy from '../utils/fs/create-symlink-or-copy';
 import CommandHelper from './e2e-command-helper';
 import FsHelper from './e2e-fs-helper';
-import ScopesData from './e2e-scopes';
-import { generateRandomStr } from '../utils';
-import { HARMONY_FEATURE } from '../api/consumer/lib/feature-toggle';
+import NpmHelper from './e2e-npm-helper';
+import ScopesData, { DEFAULT_OWNER } from './e2e-scopes';
+import BitJsoncHelper from './e2e-bit-jsonc-helper';
+
+type SetupWorkspaceOpts = {
+  addRemoteScopeAsDefaultScope?: boolean; // default to true, otherwise, the scope is "my-scope"
+  disablePreview?: boolean; // default to true to speed up the tag
+  disableMissingManuallyConfiguredPackagesIssue?: boolean; // default to true. otherwise, it'll always show missing babel/jest from react-env
+  registry?: string;
+  initGit?: boolean;
+  yarnRCConfig?: any;
+  npmrcConfig?: any;
+};
 
 export default class ScopeHelper {
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -17,16 +32,27 @@ export default class ScopeHelper {
   e2eDir: string;
   command: CommandHelper;
   fs: FsHelper;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  cache: Record<string, any>;
+  npm: NpmHelper;
+  bitJsonc: BitJsoncHelper;
+  cache?: Record<string, any>;
   keepEnvs: boolean;
   clonedScopes: string[] = [];
   packageManager = 'npm';
-  constructor(debugMode: boolean, scopes: ScopesData, commandHelper: CommandHelper, fsHelper: FsHelper) {
+  constructor(
+    debugMode: boolean,
+    scopes: ScopesData,
+    commandHelper: CommandHelper,
+    fsHelper: FsHelper,
+    npmHelper: NpmHelper,
+    bitJsonc: BitJsoncHelper
+  ) {
+    this.debugMode = debugMode;
     this.keepEnvs = !!process.env.npm_config_keep_envs; // default = false
     this.scopes = scopes;
     this.command = commandHelper;
     this.fs = fsHelper;
+    this.npm = npmHelper;
+    this.bitJsonc = bitJsonc;
   }
   clean() {
     fs.emptyDirSync(this.scopes.localPath);
@@ -38,14 +64,12 @@ export default class ScopeHelper {
     fs.removeSync(this.scopes.localPath);
     fs.removeSync(this.scopes.remotePath);
     if (this.cache) {
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       fs.removeSync(this.cache.localScopePath);
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       fs.removeSync(this.cache.remoteScopePath);
       delete this.cache;
     }
     if (this.clonedScopes && this.clonedScopes.length) {
-      this.clonedScopes.forEach(scopePath => fs.removeSync(scopePath));
+      this.clonedScopes.forEach((scopePath) => fs.removeSync(scopePath));
     }
     this.fs.cleanExternalDirs();
   }
@@ -57,28 +81,49 @@ export default class ScopeHelper {
     this.packageManager = packageManager;
   }
 
-  reInitLocalScope() {
+  reInitLocalScope(opts?: SetupWorkspaceOpts) {
     this.cleanLocalScope();
-    this.initLocalScope();
+    if (opts?.initGit) this.command.runCmd('git init');
+    this.initWorkspace();
+
+    if (opts?.addRemoteScopeAsDefaultScope ?? true) this.bitJsonc.addDefaultScope();
+    if (opts?.disablePreview ?? true) this.bitJsonc.disablePreview();
+    if (opts?.disableMissingManuallyConfiguredPackagesIssue ?? true)
+      this.bitJsonc.disableMissingManuallyConfiguredPackagesIssue();
+
+    if (opts?.registry) {
+      this._writeNpmrc({
+        registry: opts.registry,
+        ...opts.npmrcConfig,
+      });
+      this._writeYarnRC({
+        unsafeHttpWhitelist: ['localhost'],
+        ...opts?.yarnRCConfig,
+      });
+    } else {
+      if (opts?.yarnRCConfig) {
+        this._writeYarnRC(opts.yarnRCConfig);
+      }
+      if (opts?.npmrcConfig) {
+        this._writeNpmrc(opts.npmrcConfig);
+      }
+    }
   }
-  reInitLocalScopeHarmony() {
-    this.cleanLocalScope();
-    this.command.runCmd('bit init', undefined, undefined, HARMONY_FEATURE);
+  private _writeYarnRC(yarnRCConfig: any) {
+    this.fs.writeFile('.yarnrc.yml', yaml.stringify(yarnRCConfig));
   }
 
-  initLocalScope() {
-    return this.initWorkspace();
+  private _writeNpmrc(config: any) {
+    this.fs.writeFile('.npmrc', ini.stringify(config));
+  }
+
+  newLocalScope(templateName: string, flags?: string) {
+    fs.removeSync(this.scopes.localPath);
+    this.command.new(templateName, flags, this.scopes.local, this.scopes.e2eDir);
   }
 
   initWorkspace(workspacePath?: string) {
-    // return this.command.runCmd('bit init -N', workspacePath);
-    return this.command.runCmd(`bit init -p ${this.packageManager}`, workspacePath);
-  }
-
-  initWorkspaceAndRemoteScope(workspacePath?: string) {
-    this.initWorkspace(workspacePath);
-    this.reInitRemoteScope();
-    this.addRemoteScope();
+    return this.command.runCmd(`bit init`, workspacePath);
   }
 
   async initInteractive(inputs: InteractiveInputs) {
@@ -88,17 +133,12 @@ export default class ScopeHelper {
 
   initLocalScopeWithOptions(options: Record<string, any>) {
     const value = Object.keys(options)
-      .map(key => `-${key} ${options[key]}`)
+      .map((key) => `-${key} ${options[key]}`)
       .join(' ');
     return this.command.runCmd(`bit init ${value}`);
   }
-  setNewLocalAndRemoteScopes() {
-    this.reInitLocalScope();
-    this.reInitRemoteScope();
-    this.addRemoteScope();
-  }
-  setNewLocalAndRemoteScopesHarmony() {
-    this.reInitLocalScopeHarmony();
+  setNewLocalAndRemoteScopes(opts?: SetupWorkspaceOpts) {
+    this.reInitLocalScope(opts);
     this.reInitRemoteScope();
     this.addRemoteScope();
   }
@@ -109,26 +149,31 @@ export default class ScopeHelper {
     }
     this.scopes.setLocalScope();
     fs.ensureDirSync(this.scopes.localPath);
-    return this.initLocalScope();
+    return this.initWorkspace();
   }
   addRemoteScope(
     remoteScopePath: string = this.scopes.remotePath,
-    localScopePath: string = this.scopes.localPath,
+    cwd: string = this.scopes.localPath,
     isGlobal = false
   ) {
     const globalArg = isGlobal ? '-g' : '';
     if (process.env.npm_config_with_ssh) {
-      return this.command.runCmd(
-        `bit remote add ssh://\`whoami\`@127.0.0.1:/${remoteScopePath} ${globalArg}`,
-        localScopePath
-      );
+      return this.command.runCmd(`bit remote add ssh://\`whoami\`@127.0.0.1:/${remoteScopePath} ${globalArg}`, cwd);
     }
-    return this.command.runCmd(`bit remote add file://${remoteScopePath} ${globalArg}`, localScopePath);
+    return this.command.runCmd(`bit remote add file://${remoteScopePath} ${globalArg}`, cwd);
   }
 
-  removeRemoteScope(remoteScope: string = this.scopes.remote, isGlobal = false) {
+  addRemoteHttpScope(port = '3000') {
+    return this.command.runCmd(`bit remote add http://localhost:${port}`);
+  }
+
+  removeRemoteScope(
+    remoteScope: string = this.scopes.remote,
+    isGlobal = false,
+    localScopePath: string = this.scopes.localPath
+  ) {
     const globalArg = isGlobal ? '-g' : '';
-    return this.command.runCmd(`bit remote del ${remoteScope} ${globalArg}`);
+    return this.command.runCmd(`bit remote del ${remoteScope} ${globalArg}`, localScopePath);
   }
 
   addRemoteEnvironment(isGlobal = false) {
@@ -143,8 +188,7 @@ export default class ScopeHelper {
     return this.removeRemoteScope(this.scopes.env, isGlobal);
   }
 
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  reInitRemoteScope(scopePath?: string = this.scopes.remotePath) {
+  reInitRemoteScope(scopePath = this.scopes.remotePath) {
     fs.emptyDirSync(scopePath);
     return this.command.runCmd('bit init --bare', scopePath);
   }
@@ -165,24 +209,34 @@ export default class ScopeHelper {
     return this.command.runCmd('bit init --bare', this.scopes.envPath);
   }
 
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  getNewBareScope(scopeNameSuffix? = '-remote2') {
-    const scopeName = generateRandomStr() + scopeNameSuffix;
+  getNewBareScope(scopeNameSuffix = '-remote2', addOwnerPrefix = false) {
+    const prefix = addOwnerPrefix ? `${DEFAULT_OWNER}.` : '';
+    const scopeName = prefix + generateRandomStr() + scopeNameSuffix;
     const scopePath = path.join(this.scopes.e2eDir, scopeName);
     fs.emptyDirSync(scopePath);
     this.command.runCmd('bit init --bare', scopePath);
     this.addRemoteScope(this.scopes.remotePath, scopePath);
-    return { scopeName, scopePath };
+    const scopeWithoutOwner = scopeName.replace(prefix, '');
+    return { scopeName, scopePath, scopeWithoutOwner };
   }
+
+  getNewBareScopeWithSpecificName(scopeName: string) {
+    const scopePath = path.join(this.scopes.e2eDir, scopeName);
+    fs.emptyDirSync(scopePath);
+    this.command.runCmd('bit init --bare', scopePath);
+    return scopePath;
+  }
+
   /**
    * Sometimes many tests need to do the exact same steps to init the local-scope, such as importing compiler/tester.
    * To make it faster, use this method before all tests, and then use getClonedLocalScope method to restore from the
    * cloned scope.
    */
-  cloneLocalScope(dereferenceSymlinks = true) {
+  cloneLocalScope(dereferenceSymlinks = IS_WINDOWS) {
     const clonedScope = `${generateRandomStr()}-clone`;
     const clonedScopePath = path.join(this.scopes.e2eDir, clonedScope);
     if (this.debugMode) console.log(`cloning a scope from ${this.scopes.localPath} to ${clonedScopePath}`);
+    fs.removeSync(path.join(this.scopes.localPath, 'node_modules/@teambit/legacy'));
     fs.copySync(this.scopes.localPath, clonedScopePath, { dereference: dereferenceSymlinks });
     this.clonedScopes.push(clonedScopePath);
     return clonedScopePath;
@@ -222,5 +276,14 @@ export default class ScopeHelper {
 
   getClonedRemoteScope(clonedScopePath: string) {
     return this.getClonedScope(clonedScopePath, this.scopes.remotePath);
+  }
+
+  linkCoreAspects() {
+    const aspectsRoot = path.join(this.scopes.localPath, './node_modules/@teambit');
+    const localAspectsRoot = path.join(__dirname, '../../node_modules/@teambit');
+    console.log('aspectsRoot', aspectsRoot);
+    console.log('localAspectsRoot', localAspectsRoot);
+    fs.removeSync(aspectsRoot);
+    createSymlinkOrCopy(localAspectsRoot, aspectsRoot);
   }
 }

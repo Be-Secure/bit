@@ -1,7 +1,6 @@
-import { loadConsumer, Consumer } from '../../../consumer';
+import { Consumer, loadConsumer } from '../../../consumer';
+import DependencyGraph, { DependenciesInfo } from '../../../scope/graph/scope-graph';
 import NothingToCompareTo from './exceptions/nothing-to-compare-to';
-import DependencyGraph from '../../../scope/graph/scope-graph';
-import { DependenciesInfo } from '../../../scope/graph/scope-graph';
 
 export default (async function getConsumerBit({
   id,
@@ -9,7 +8,7 @@ export default (async function getConsumerBit({
   allVersions,
   showRemoteVersions,
   showDependents,
-  showDependencies
+  showDependencies,
 }: {
   id: string;
   compare: boolean;

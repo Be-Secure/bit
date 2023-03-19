@@ -1,14 +1,20 @@
+/**
+ * this command is not in-use currently. consider deleting it.
+ */
+
 /* eslint max-classes-per-file: 0 */
 
 import chalk from 'chalk';
+
+import { getResolver, resetResolver, setResolver } from '../../../api/scope/lib/resolver';
 import { LegacyCommand } from '../../legacy-command';
-import { getResolver, setResolver, resetResolver } from '../../../api/scope/lib/resolver';
 
 class ResolverSet implements LegacyCommand {
   name = 'set <resolverPath>';
   description = 'set remote resolver to scope (use from scope directory)';
   alias = 's';
   private = true;
+  loader = false;
   opts = [];
 
   action([resolverPath]: [string]): Promise<any> {

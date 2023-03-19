@@ -1,8 +1,8 @@
 import execa from 'execa';
 import R from 'ramda';
-import Diagnosis from '../diagnosis';
+
 import getGitExecutablePath from '../../utils/git/git-executable';
-import { ExamineBareResult } from '../diagnosis';
+import Diagnosis, { ExamineBareResult } from '../diagnosis';
 
 export const DIAGNOSIS_NAME = 'validate git exec';
 export default class ValidateGitExec extends Diagnosis {
@@ -24,16 +24,16 @@ export default class ValidateGitExec extends Diagnosis {
     try {
       await execa(gitExecutablePath, ['--version']);
       return {
-        valid: true
+        valid: true,
       };
-    } catch (err) {
+    } catch (err: any) {
       // if (err.code === 'ENOENT') {
       // }
       return {
         valid: false,
         data: {
-          gitExecutablePath
-        }
+          gitExecutablePath,
+        },
       };
     }
   }

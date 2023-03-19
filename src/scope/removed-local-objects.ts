@@ -1,5 +1,5 @@
-import RemovedObjects from './removed-components';
 import { BitIds } from '../bit-id';
+import RemovedObjects from './removed-components';
 
 export default class RemovedLocalObjects extends RemovedObjects {
   modifiedComponents: BitIds;
@@ -7,10 +7,10 @@ export default class RemovedLocalObjects extends RemovedObjects {
     removedComponentIds?: BitIds,
     missingComponents?: BitIds,
     modifiedComponents?: BitIds,
-    removedDependencies?: BitIds,
-    dependentBits?: Record<string, any>
+    dependentBits?: Record<string, any>,
+    removedFromLane?: BitIds
   ) {
-    super({ removedComponentIds, missingComponents, removedDependencies, dependentBits });
+    super({ removedComponentIds, missingComponents, dependentBits, removedFromLane });
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     this.modifiedComponents = modifiedComponents;
   }

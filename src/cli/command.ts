@@ -1,3 +1,4 @@
+import { Group } from './command-groups';
 import { CommandOptions } from './legacy-command';
 
 export interface Command {
@@ -15,26 +16,30 @@ export interface Command {
   alias?: string;
 
   /**
-   * Description of the command in commands summery
-   * `bit -h`
-   * `bit`
-   */
-  shortDescription?: string;
-
-  /**
-   * The description of the command. Will be seen in bit command help.
-   * `bit add --help`
+   * The description of the command. Being used in the commands summery (`bit --help`) and the help (e.g. `bit create --help`).
+   * should be short and precise. not more than one line. (use extendedDescription for more info).
    */
   description?: string;
+
+  /**
+   * The extended description of the command. Will be seen in only in the command help, just after the description.
+   */
+  extendedDescription?: string;
+
+  /**
+   * url to a doc page explaining the command. shown in the command help just after the extendedDescription.
+   * if a relative url is entered, the base url will be retrieved from `teambit.community/community` aspect.
+   */
+  helpUrl?: string;
 
   /**
    * allow grouping of commands to hint summery renderer
    * Places in default automatic help
    */
-  group?: string;
+  group?: Group | string;
 
   /**
-   * should a command be exposed to the user.
+   * should a command be exposed to the user (by bit help).
    * e.g. experimental commands or commands created for the ssh communication should not be exposed
    */
   private?: boolean;
@@ -46,7 +51,9 @@ export interface Command {
   internal?: boolean;
 
   /**
-   * should turn on Loader
+   * should turn on Loader.
+   * the default is false for internal-commands and true for others.
+   * @see cliMain.setDefaults()
    */
   loader?: boolean;
 
@@ -57,6 +64,13 @@ export interface Command {
    * ['j', 'json', 'output json format']
    */
   options: CommandOptions;
+
+  /**
+   * arguments are defined in the "name" property, and that's where the source of truth is.
+   * this prop is optional and provides a way to describe the args. later, it'll support more fields, such as defaultValue.
+   * if this is set, it'll be shown in the command help under "Arguments" section.
+   */
+  arguments?: CommandArg[];
 
   /**
    * sub commands for example:
@@ -71,6 +85,17 @@ export interface Command {
   remoteOp?: boolean;
 
   /**
+   * if true, it indicates that it doesn't need the workspace to work and can be executed outside a
+   * workspace
+   */
+  skipWorkspace?: boolean;
+
+  /**
+   * optionally, give some examples how to use the command.
+   */
+  examples?: Example[];
+
+  /**
    * do not set this. it is being set once the command run.
    * the values are those followed `--` in the command line. (e.g. `bit import -- --no-optional`)
    */
@@ -82,7 +107,7 @@ export interface Command {
    * @param flags - command flags as described in options.
    * @return - JSX element which is rendered with ink
    */
-  render?(args: CLIArgs, flags: Flags): Promise<React.ReactElement>;
+  render?(args: CLIArgs, flags: Flags): Promise<RenderResult | React.ReactElement>;
 
   /**
    * Command handler which is called for legacy commands or when process.isTTY is false
@@ -101,7 +126,10 @@ export interface Command {
    */
   json?(args: CLIArgs, flags: Flags): Promise<GenericObject>;
 }
-export type Flags = { [flagName: string]: string | boolean | undefined };
+export type Flags = { [flagName: string]: string | boolean | undefined | any };
 export type CLIArgs = Array<string[] | string>;
 export type GenericObject = { [k: string]: any };
 export type Report = { data: string; code: number };
+export type RenderResult = { data: React.ReactElement; code: number };
+export type CommandArg = { name: string; description?: string };
+export type Example = { cmd: string; description: string };

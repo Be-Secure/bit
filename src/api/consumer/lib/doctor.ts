@@ -1,24 +1,23 @@
-// @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-import os from 'os';
-import tar from 'tar-stream';
 import fs from 'fs-extra';
+import os from 'os';
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 import Stream from 'stream';
-import registerCoreAndExtensionsDiagnoses from '../../../doctor/doctor-registrar-builder';
-import DoctorRegistrar from '../../../doctor/doctor-registrar';
-import Diagnosis from '../../../doctor/diagnosis';
-import { getWithoutExt, getExt } from '../../../utils';
-import { ExamineResult } from '../../../doctor/diagnosis';
-import logger from '../../../logger/logger';
-import { DEBUG_LOG, BIT_VERSION, CFG_USER_NAME_KEY, CFG_USER_EMAIL_KEY } from '../../../constants';
-import * as globalConfig from './global-config';
-import { getConsumerInfo } from '../../../consumer/consumer-locator';
+import tar from 'tar-stream';
+import { getHarmonyVersion } from '../../../bootstrap';
+
+import { CFG_USER_EMAIL_KEY, CFG_USER_NAME_KEY, DEBUG_LOG } from '../../../constants';
 import BitMap from '../../../consumer/bit-map';
-import MissingDiagnosisName from './exceptions/missing-diagnosis-name';
-import DiagnosisNotFound from './exceptions/diagnosis-not-found';
-import { ConsumerInfo } from '../../../consumer/consumer-locator';
-import npmClient from '../../../npm-client';
 import WorkspaceConfig from '../../../consumer/config/workspace-config';
+import { ConsumerInfo, getConsumerInfo } from '../../../consumer/consumer-locator';
+import Diagnosis, { ExamineResult } from '../../../doctor/diagnosis';
+import DoctorRegistrar from '../../../doctor/doctor-registrar';
+import registerCoreAndExtensionsDiagnoses from '../../../doctor/doctor-registrar-builder';
+import logger from '../../../logger/logger';
+import npmClient from '../../../npm-client';
+import { getExt, getWithoutExt, removeChalkCharacters } from '../../../utils';
+import DiagnosisNotFound from './exceptions/diagnosis-not-found';
+import MissingDiagnosisName from './exceptions/missing-diagnosis-name';
+import * as globalConfig from './global-config';
 
 // run specific check
 export type DoctorMetaData = {
@@ -43,20 +42,20 @@ export type DoctorRunOneResult = {
 
 let runningTimeStamp;
 
-export default (async function runAll({ filePath }: { filePath?: string }): Promise<DoctorRunAllResults> {
+export default async function runAll({ filePath }: { filePath?: string }): Promise<DoctorRunAllResults> {
   registerCoreAndExtensionsDiagnoses();
   runningTimeStamp = _getTimeStamp();
   const doctorRegistrar = DoctorRegistrar.getInstance();
-  const examineP = doctorRegistrar.diagnoses.map(diagnosis => diagnosis.examine());
+  const examineP = doctorRegistrar.diagnoses.map((diagnosis) => diagnosis.examine());
   const examineResults = await Promise.all(examineP);
   const envMeta = await _getEnvMeta();
   const savedFilePath = await _saveExamineResultsToFile(examineResults, envMeta, filePath);
   return { examineResults, savedFilePath, metaData: envMeta };
-});
+}
 
 export async function runOne({
   diagnosisName,
-  filePath
+  filePath,
 }: {
   diagnosisName: string;
   filePath?: string;
@@ -98,8 +97,8 @@ async function _saveExamineResultsToFile(
 
   packStream.pipe(yourTarball);
 
-  return new Promise(resolve => {
-    yourTarball.on('close', function() {
+  return new Promise((resolve) => {
+    yourTarball.on('close', function () {
       logger.info(`wrote a file by bit doctor, file path: ${finalFilePath}`);
       resolve(finalFilePath);
       // fs.stat(finalFilePath, function (err, stats) {
@@ -139,7 +138,7 @@ async function _generateExamineResultsTarFile(
   envMeta: DoctorMetaData
 ): Promise<Stream.Readable> {
   const pack = tar.pack(); // pack is a streams2 stream
-  const debugLog = await _getDebugLogAsStream();
+  const debugLog = await _getDebugLogAsBuffer();
   const consumerInfo = await _getConsumerInfo();
   let bitmap;
   if (consumerInfo && consumerInfo.path) {
@@ -172,10 +171,10 @@ async function _getEnvMeta(): Promise<DoctorMetaData> {
     nodeVersion: process.version,
     runningTimestamp: runningTimeStamp || _getTimeStamp(),
     platform: os.platform(),
-    bitVersion: BIT_VERSION,
+    bitVersion: getHarmonyVersion(),
     npmVersion: await npmClient.getNpmVersion(),
     yarnVersion: await npmClient.getYarnVersion(),
-    userDetails: _getUserDetails()
+    userDetails: _getUserDetails(),
   };
 
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -188,12 +187,12 @@ function _getUserDetails(): string {
   return `${name}<${email}>`;
 }
 
-async function _getDebugLogAsStream(): Promise<Buffer | null | undefined> {
+async function _getDebugLogAsBuffer(): Promise<Buffer | null | undefined> {
   const exists = await fs.pathExists(DEBUG_LOG);
-  if (exists) {
-    return fs.readFile(DEBUG_LOG);
-  }
-  return Promise.resolve(undefined);
+  if (!exists) return null;
+  const log = await fs.readFile(DEBUG_LOG, 'utf-8');
+  const logWithoutChalk = removeChalkCharacters(log) as string;
+  return Buffer.from(logWithoutChalk);
 }
 
 async function _getConsumerInfo(): Promise<ConsumerInfo | null | undefined> {

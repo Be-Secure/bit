@@ -1,129 +1,102 @@
-import R from 'ramda';
-import * as RA from 'ramda-adjunct';
-import chalk from 'chalk';
-import diff from 'object-diff';
-import normalize from 'normalize-path';
 import arrayDifference from 'array-difference';
+import chalk from 'chalk';
+import Table from 'cli-table';
+import normalize from 'normalize-path';
+import diff from 'object-diff';
+import R from 'ramda';
+import { compact } from 'lodash';
+import { lt, gt } from 'semver';
 import Component from '../component/consumer-component';
-import { FieldsDiff } from './components-diff';
-import { Consumer } from '..';
-import EnvExtension from '../../legacy-extensions/env-extension';
+import { ExtensionDataList } from '../config';
+import { DiffOptions, FieldsDiff } from './components-diff';
+import { BitIds } from '../../bit-id';
 
+type ConfigDiff = {
+  fieldName: string;
+  diffOutput: string;
+};
+type DepDiffType = 'added' | 'removed' | 'upgraded' | 'downgraded' | 'changed';
+type DepDiff = {
+  name: string;
+  type: DepDiffType;
+  left?: string;
+  right?: string;
+};
 export function componentToPrintableForDiff(component: Component): Record<string, any> {
-  const obj = {};
-  const parsePackages = packages => {
+  const obj: Record<string, any> = {};
+  const parsePackages = (packages: Record<string, string>): string[] | null => {
     return !R.isEmpty(packages) && !R.isNil(packages)
-      ? Object.keys(packages).map(key => `${key}@${packages[key]}`)
+      ? Object.keys(packages).map((key) => `${key}@${packages[key]}`)
       : null;
   };
-  const parseEnvFiles = (envExtension: EnvExtension | null | undefined): string[] | null | undefined => {
-    // $FlowFixMe sadly, Flow doesn't know what isNilOrEmpty does
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    if (RA.isNilOrEmpty(envExtension) || RA.isNilOrEmpty(envExtension.files)) return null;
-    // $FlowFixMe sadly, Flow doesn't know what isNilOrEmpty does
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return envExtension.files.map(file => `${file.name} => ${file.relative}`).sort();
+
+  const parseExtensions = (extensions?: ExtensionDataList) => {
+    if (!extensions || R.isEmpty(extensions)) return null;
+    return extensions.toConfigArray().map((extension) => extension.id);
   };
+
   const {
     lang,
-    compiler,
-    tester,
+    bindingPrefix,
     dependencies,
     devDependencies,
     packageDependencies,
     devPackageDependencies,
-    compilerPackageDependencies,
-    testerPackageDependencies,
     files,
+    extensions,
     mainFile,
-    deprecated
+    deprecated,
   } = component;
   const allDevPackages = {
     ...devPackageDependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...compilerPackageDependencies.devDependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...testerPackageDependencies.devDependencies
   };
   const allPackages = {
     ...packageDependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...compilerPackageDependencies.dependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...testerPackageDependencies.dependencies
   };
   const allPeerPackages = {
     ...component.peerPackageDependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...compilerPackageDependencies.peerDependencies,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    ...testerPackageDependencies.peerDependencies
   };
   const parsedDevPackageDependencies = parsePackages(allDevPackages) || [];
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  const peerPackageDependencies = [].concat(parsePackages(allPeerPackages)).filter(x => x);
+  const peerPackageDependencies = [].concat(parsePackages(allPeerPackages)).filter((x) => x);
   const overrides = component.overrides.componentOverridesData;
 
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.id = component.id.toStringWithoutScope();
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  obj.compiler = compiler ? compiler.name : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  obj.compilerFiles = parseEnvFiles(compiler);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.language = lang || null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  obj.tester = tester ? tester.name : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  obj.testerFiles = parseEnvFiles(tester);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  obj.bindingPrefix = bindingPrefix || null;
   obj.mainFile = mainFile ? normalize(mainFile) : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.dependencies = dependencies
     .toStringOfIds()
     .sort()
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     .concat(parsePackages(allPackages))
-    .filter(x => x);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+    .filter((x) => x);
   obj.devDependencies = devDependencies
     .toStringOfIds()
     .sort()
     .concat(parsedDevPackageDependencies)
-    .filter(x => x);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+    .filter((x) => x);
   obj.peerDependencies = peerPackageDependencies.length ? peerPackageDependencies : undefined;
 
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.files =
     files && !R.isEmpty(files) && !R.isNil(files)
-      ? // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        files.filter(file => !file.test).map(file => normalize(file.relative))
+      ? files.filter((file) => !file.test).map((file) => normalize(file.relative))
       : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.specs =
     files && !R.isEmpty(files) && !R.isNil(files) && R.find(R.propEq('test', true))(files)
-      ? // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        files.filter(file => file.test).map(file => normalize(file.relative))
+      ? files.filter((file) => file.test).map((file) => normalize(file.relative))
       : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  obj.extensions = parseExtensions(extensions);
   obj.deprecated = deprecated ? 'True' : null;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.overridesDependencies = parsePackages(overrides.dependencies);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.overridesDevDependencies = parsePackages(overrides.devDependencies);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.overridesPeerDependencies = parsePackages(overrides.peerDependencies);
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   obj.overridesPackageJsonProps = JSON.stringify(component.overrides.componentOverridesPackageJsonData);
   return obj;
 }
 
 export function prettifyFieldName(field: string): string {
-  return `${field[0].toUpperCase()}${field.substr(1)}`.replace(/([A-Z])/g, ' $1').trim();
+  return `${field[0].toUpperCase()}${field.slice(1)}`.replace(/([A-Z])/g, ' $1').trim();
 }
 
 function comparator(a, b) {
@@ -139,30 +112,42 @@ export function getDiffBetweenObjects(
 ): Record<string, any> {
   return diff.custom(
     {
-      equal: comparator
+      equal: comparator,
     },
     objectLeft,
     objectRight
   );
 }
 
+function componentToPrintableForDiffCommand(component: Component, verbose = false): Record<string, any> {
+  const comp = componentToPrintableForDiff(component);
+  delete comp.dependencies;
+  delete comp.devDependencies;
+  delete comp.peerDependencies;
+  delete comp.id;
+  if (!verbose) {
+    delete comp.overridesDependencies;
+    delete comp.overridesDevDependencies;
+    delete comp.overridesPeerDependencies;
+    delete comp.overridesPackageJsonProps;
+  }
+  return comp;
+}
+
 export function diffBetweenComponentsObjects(
-  consumer: Consumer,
   componentLeft: Component,
   componentRight: Component,
-  verbose: boolean
-): FieldsDiff[] | null | undefined {
-  const printableLeft = componentToPrintableForDiff(componentLeft);
-  const printableRight = componentToPrintableForDiff(componentRight);
+  { verbose, formatDepsAsTable }: DiffOptions
+): FieldsDiff[] | undefined {
+  const printableLeft = componentToPrintableForDiffCommand(componentLeft, verbose);
+  const printableRight = componentToPrintableForDiffCommand(componentRight, verbose);
+  const leftVersion = componentLeft.version;
+  const rightVersion = componentRight.version;
   const fieldsDiff = getDiffBetweenObjects(printableLeft, printableRight);
   if (!componentLeft.version || !componentRight.version) {
     throw new Error('diffBetweenComponentsObjects component does not have a version');
   }
-  const areVersionsTheSame = componentLeft.version === componentRight.version;
-  const labelLeft = areVersionsTheSame ? `${componentLeft.version} original` : componentLeft.version;
-  const labelRight = areVersionsTheSame ? `${componentRight.version} modified` : componentRight.version;
-  const titleLeft = (field: string): string => `--- ${prettifyFieldName(field)} (${labelLeft})\n`;
-  const titleRight = (field: string): string => `+++ ${prettifyFieldName(field)} (${labelRight})\n`;
+
   const printFieldValue = (fieldValue: string | Array<string>): string => {
     if (typeof fieldValue === 'string') return fieldValue;
     if (Array.isArray(fieldValue)) return `[ ${fieldValue.join(', ')} ]`;
@@ -179,24 +164,26 @@ export function diffBetweenComponentsObjects(
     return `+ ${printFieldValue(fieldValue)}\n`;
   };
   const fieldsDiffOutput = Object.keys(fieldsDiff).map((field: string) => {
-    const title = titleLeft(field) + chalk.bold(titleRight(field));
+    const title =
+      titleLeft(field, leftVersion, rightVersion) + chalk.bold(titleRight(field, leftVersion, rightVersion));
     const value = chalk.red(printFieldLeft(field)) + chalk.green(printFieldRight(field));
     const diffOutput = title + value;
     return { fieldName: field, diffOutput };
   });
 
-  const dependenciesOutput = () => {
+  const dependenciesRelativePathsOutput = (): FieldsDiff[] => {
     if (!verbose) return [];
     const dependenciesLeft = componentLeft.getAllDependencies();
     const dependenciesRight = componentRight.getAllDependencies();
     if (R.isEmpty(dependenciesLeft) || R.isEmpty(dependenciesRight)) return [];
     return dependenciesLeft.reduce((acc, dependencyLeft) => {
       const idStr = dependencyLeft.id.toString();
-      const dependencyRight = dependenciesRight.find(dep => dep.id.isEqual(dependencyLeft.id));
+      const dependencyRight = dependenciesRight.find((dep) => dep.id.isEqual(dependencyLeft.id));
       if (!dependencyRight) return acc;
       if (JSON.stringify(dependencyLeft.relativePaths) === JSON.stringify(dependencyRight.relativePaths)) return acc;
       const fieldName = `Dependency ${idStr} relative-paths`;
-      const title = titleLeft(fieldName) + chalk.bold(titleRight(fieldName));
+      const title =
+        titleLeft(fieldName, leftVersion, rightVersion) + chalk.bold(titleRight(fieldName, leftVersion, rightVersion));
       const getValue = (fieldValue: Record<string, any>, left: boolean) => {
         if (R.isEmpty(fieldValue)) return '';
         const sign = left ? '-' : '+';
@@ -208,36 +195,226 @@ export function diffBetweenComponentsObjects(
         chalk.green(getValue(dependencyRight.relativePaths, false));
       const diffOutput = title + value;
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       acc.push({ fieldName, diffOutput });
       return acc;
     }, []);
   };
 
-  const envs = ['compiler', 'tester'];
-  const fieldsEnvsConfigOutput = envs
-    .map((env: string) => {
-      const leftConfig = componentLeft[env] && componentLeft[env].dynamicConfig ? componentLeft[env].dynamicConfig : {};
-      const rightConfig = // $FlowFixMe
-        componentRight[env] && componentRight[env].dynamicConfig ? componentRight[env].dynamicConfig : {};
-      // $FlowFixMe we remove the null later
-      if (JSON.stringify(leftConfig) === JSON.stringify(rightConfig)) return null;
-      const fieldName = `${env} configuration`;
-      const title = titleLeft(fieldName) + chalk.bold(titleRight(fieldName));
-      const getValue = (fieldValue: Record<string, any>, left: boolean) => {
-        if (R.isEmpty(fieldValue)) return '';
-        const sign = left ? '-' : '+';
-        const jsonOutput = JSON.stringify(fieldValue, null, `${sign} `);
-        return `${jsonOutput}\n`;
-      };
-      const value = chalk.red(getValue(leftConfig, true)) + chalk.green(getValue(rightConfig, false));
+  const getDepDiffType = (left?: string, right?: string): DepDiffType => {
+    if (left && !right) return 'removed';
+    if (!left && right) return 'added';
+    if (!left || !right) throw new Error('diff.getType expect at least one of the component to have value');
+    const opts = { loose: true, includePrerelease: true };
+    try {
+      if (lt(left, right, opts)) return 'upgraded';
+      if (gt(left, right, opts)) return 'downgraded';
+    } catch (err: any) {
+      // the semver is probably a range, no need to compare, just fallback to the "changed"
+    }
+    return 'changed';
+  };
 
-      const diffOutput = title + value;
-      return { fieldName, diffOutput };
-    })
-    .filter(x => x);
+  const formatDepsDiffAsTable = (diffs: DepDiff[], fieldName: string): string => {
+    diffs.forEach((oneDiff) => {
+      // oneDiff.name = `> ${oneDiff.name}`;
+      oneDiff.left = oneDiff.left || '---';
+      oneDiff.right = oneDiff.right || '---';
+    });
+    const diffTable = new Table({
+      head: ['name', 'diff', `${leftVersion}`, `${rightVersion}`],
+      style: { head: ['cyan'] },
+    });
+    diffs.map((dif) => diffTable.push(Object.values(dif)));
+    return `\n${chalk.bold(fieldName)}\n${diffTable.toString()}`;
+  };
 
-  const allDiffs = [...fieldsDiffOutput, ...fieldsEnvsConfigOutput, ...dependenciesOutput()];
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  const formatDepsDiffAsPlainText = (diffs: DepDiff[], fieldName: string): string => {
+    diffs.forEach((oneDiff) => {
+      oneDiff.left = oneDiff.left ? chalk.red(`- ${oneDiff.name}@${oneDiff.left}\n`) : '';
+      oneDiff.right = oneDiff.right ? chalk.green(`+ ${oneDiff.name}@${oneDiff.right}\n`) : '';
+    });
+    const output = diffs.map((d) => `${d.name}\n${d.left}${d.right}`).join('\n');
+    const depTitleLeft = `--- ${fieldName} ${labelLeft(leftVersion, rightVersion)}`;
+    const depTitleRight = `+++ ${fieldName} ${labelRight(leftVersion, rightVersion)}`;
+    const title = `${depTitleLeft}\n${chalk.bold(depTitleRight)}`;
+
+    return `\n${title}\n${output}`;
+  };
+
+  const formatDepsDiff = (diffs: DepDiff[], fieldName: string): string => {
+    return formatDepsAsTable ? formatDepsDiffAsTable(diffs, fieldName) : formatDepsDiffAsPlainText(diffs, fieldName);
+  };
+
+  const packageDependenciesOutput = (fieldName: string): string | null => {
+    const dependenciesLeft = componentLeft[fieldName];
+    const dependenciesRight = componentRight[fieldName];
+    if (R.isEmpty(dependenciesLeft) && R.isEmpty(dependenciesRight)) return null;
+    const diffsLeft = Object.keys(dependenciesLeft).reduce<DepDiff[]>((acc, dependencyName) => {
+      const dependencyLeft = dependenciesLeft[dependencyName];
+      const dependencyRight = dependenciesRight[dependencyName];
+      if (dependencyLeft === dependencyRight) return acc;
+
+      acc.push({
+        name: dependencyName,
+        type: getDepDiffType(dependencyLeft, dependencyRight),
+        left: dependencyLeft,
+        right: dependencyRight,
+      });
+      return acc;
+    }, []);
+    const diffs = Object.keys(dependenciesRight).reduce<DepDiff[]>((acc, dependencyName) => {
+      if (!dependenciesLeft[dependencyName]) {
+        // otherwise it was taken care already above
+        acc.push({
+          name: dependencyName,
+          type: getDepDiffType(undefined, dependenciesRight[dependencyName]),
+          left: undefined,
+          right: dependenciesRight[dependencyName],
+        });
+      }
+      return acc;
+    }, diffsLeft);
+    if (!diffs.length) return null;
+
+    return formatDepsDiff(diffs, fieldName);
+  };
+
+  const componentDependenciesOutput = (fieldName: string): string | null => {
+    const dependenciesLeft: BitIds = componentLeft.depsIdsGroupedByType[fieldName];
+    const dependenciesRight: BitIds = componentRight.depsIdsGroupedByType[fieldName];
+    if (R.isEmpty(dependenciesLeft) && R.isEmpty(dependenciesRight)) return null;
+    const diffsLeft = dependenciesLeft.reduce<DepDiff[]>((acc, dependencyLeft) => {
+      const dependencyRight = dependenciesRight.searchWithoutVersion(dependencyLeft);
+      if (dependencyRight && dependencyLeft.isEqual(dependencyRight)) return acc;
+
+      acc.push({
+        name: dependencyLeft.toStringWithoutVersion(),
+        type: getDepDiffType(dependencyLeft.version, dependencyRight?.version),
+        left: dependencyLeft.version,
+        right: dependencyRight?.version,
+      });
+      return acc;
+    }, []);
+    const diffs = dependenciesRight.reduce<DepDiff[]>((acc, dependencyRight) => {
+      if (!dependenciesLeft.hasWithoutVersion(dependencyRight)) {
+        // otherwise it was taken care already above
+        acc.push({
+          name: dependencyRight.toStringWithoutVersion(),
+          type: getDepDiffType(undefined, dependencyRight.version),
+          left: undefined,
+          right: dependencyRight?.version,
+        });
+      }
+      return acc;
+    }, diffsLeft);
+    if (!diffs.length) return null;
+
+    return formatDepsDiff(diffs, fieldName);
+  };
+
+  const getAllDepsOutput = (): FieldsDiff[] => {
+    const depsDiff: FieldsDiff[] = [];
+    ['packageDependencies', 'devPackageDependencies', 'peerPackageDependencies'].forEach((fieldName) => {
+      const diffOutput = packageDependenciesOutput(fieldName);
+      if (diffOutput) depsDiff.push({ fieldName, diffOutput });
+    });
+    ['dependencies', 'devDependencies', 'extensionDependencies'].forEach((fieldName) => {
+      const diffOutput = componentDependenciesOutput(fieldName);
+      if (diffOutput) depsDiff.push({ fieldName, diffOutput });
+    });
+
+    return depsDiff;
+  };
+
+  const fieldsEnvsConfigOutput = getEnvsConfigOutput(componentLeft, componentRight);
+  const extensionsConfigOutput = getExtensionsConfigOutput(componentLeft, componentRight);
+
+  const allDiffs = [
+    ...fieldsDiffOutput,
+    ...fieldsEnvsConfigOutput,
+    ...extensionsConfigOutput,
+    ...dependenciesRelativePathsOutput(),
+    ...getAllDepsOutput(),
+  ];
+
   return R.isEmpty(allDiffs) ? undefined : allDiffs;
+}
+
+function getEnvsConfigOutput(componentLeft: Component, componentRight: Component): Array<ConfigDiff> {
+  const envs = ['compiler', 'tester'];
+  const fieldsEnvsConfigOutput = envs.map((env: string) => {
+    const leftConfig = componentLeft[env] && componentLeft[env].dynamicConfig ? componentLeft[env].dynamicConfig : {};
+    const rightConfig =
+      componentRight[env] && componentRight[env].dynamicConfig ? componentRight[env].dynamicConfig : {};
+    if (JSON.stringify(leftConfig) === JSON.stringify(rightConfig)) return undefined;
+    const fieldName = `${env} configuration`;
+    return configsOutput(fieldName, leftConfig, rightConfig, componentLeft.version, componentRight.version);
+  });
+  return compact(fieldsEnvsConfigOutput);
+}
+
+function getExtensionsConfigOutput(componentLeft: Component, componentRight: Component): Array<ConfigDiff> {
+  const leftExtensionsConfigs = componentLeft.extensions.sortById().toConfigObject();
+  const rightExtensionsConfigs = componentRight.extensions.sortById().toConfigObject();
+  const leftExtensionsIds = Object.keys(leftExtensionsConfigs);
+  const rightExtensionsIds = Object.keys(rightExtensionsConfigs);
+
+  // const mutualIds = R.intersection(rightExtensionsIds, rightExtensionsIds);
+  // const onlyOnOneIds = R.symmetricDifference(leftExtensionsIds, rightExtensionsIds);
+  const allIds = R.union(leftExtensionsIds, rightExtensionsIds);
+
+  const allIdsOutput = allIds.map((extId) => {
+    const leftConfig = leftExtensionsConfigs[extId];
+    const rightConfig = rightExtensionsConfigs[extId];
+    const fieldName = `${extId} configuration`;
+    return configsOutput(fieldName, leftConfig, rightConfig, componentLeft.version, componentRight.version);
+  });
+
+  return compact(allIdsOutput);
+}
+
+function labelLeft(leftVersion?: string, rightVersion?: string) {
+  const sameVersions = areVersionsTheSame(leftVersion, rightVersion);
+  return sameVersions ? `${leftVersion} original` : leftVersion;
+}
+
+function labelRight(leftVersion?: string, rightVersion?: string) {
+  const sameVersions = areVersionsTheSame(leftVersion, rightVersion);
+  return sameVersions ? `${rightVersion} modified` : rightVersion;
+}
+
+function areVersionsTheSame(leftVersion?: string, rightVersion?: string) {
+  return leftVersion === rightVersion;
+}
+
+function titleLeft(field: string, leftVersion?: string, rightVersion?: string): string {
+  const leftLabel = labelLeft(leftVersion, rightVersion);
+  return `--- ${prettifyFieldName(field)} (${leftLabel})\n`;
+}
+function titleRight(field: string, leftVersion?: string, rightVersion?: string): string {
+  const rightLabel = labelRight(leftVersion, rightVersion);
+  return `+++ ${prettifyFieldName(field)} (${rightLabel})\n`;
+}
+
+function configsOutput(
+  fieldName: string,
+  leftConfig?: Record<string, any>,
+  rightConfig?: Record<string, any>,
+  leftVersion?: string,
+  rightVersion?: string
+): ConfigDiff | undefined {
+  if (!leftConfig && !rightConfig) return undefined;
+  if (leftConfig && rightConfig && JSON.stringify(leftConfig) === JSON.stringify(rightConfig)) return undefined;
+  const title =
+    titleLeft(fieldName, leftVersion, rightVersion) + chalk.bold(titleRight(fieldName, leftVersion, rightVersion));
+  const getValue = (left: boolean, fieldValue?: Record<string, any>) => {
+    if (fieldValue === undefined || R.isEmpty(fieldValue)) return '';
+    const sign = left ? '-' : '+';
+    const jsonOutput = JSON.stringify(fieldValue, null, `${sign} `);
+    return `${jsonOutput}\n`;
+  };
+  const value = chalk.red(getValue(true, leftConfig)) + chalk.green(getValue(false, rightConfig));
+
+  const diffOutput = title + value;
+  return { fieldName, diffOutput };
 }

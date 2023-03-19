@@ -1,8 +1,7 @@
-import Diagnosis from '../diagnosis';
-import { ExamineBareResult } from '../diagnosis';
-import { loadConsumer } from '../../consumer';
-import { Symlink, ModelComponent } from '../../scope/models';
 import { BitId, BitIds } from '../../bit-id';
+import { loadConsumer } from '../../consumer';
+import { ModelComponent, Symlink } from '../../scope/models';
+import Diagnosis, { ExamineBareResult } from '../diagnosis';
 
 export const DIAGNOSIS_NAME = 'check orphan refs';
 export default class OrphanSymlinkObjects extends Diagnosis {
@@ -24,12 +23,11 @@ export default class OrphanSymlinkObjects extends Diagnosis {
 
   async _runExamine(): Promise<ExamineBareResult> {
     const consumer = await loadConsumer();
-    const bitObjects = await consumer.scope.objects.list();
-    const symlinks = bitObjects.filter(object => object instanceof Symlink);
+    const symlinks = await consumer.scope.objects.list([Symlink]);
     const orphanSymlinks = new BitIds();
     const objectsToDelete = [];
     await Promise.all(
-      symlinks.map(async symlink => {
+      symlinks.map(async (symlink) => {
         // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
         const realComponentId: BitId = symlink.getRealComponentId();
         const realModelComponent = ModelComponent.fromBitId(realComponentId);
@@ -46,8 +44,8 @@ export default class OrphanSymlinkObjects extends Diagnosis {
       valid: orphanSymlinks.length === 0,
       data: {
         orphanSymlinks,
-        objectsToDelete
-      }
+        objectsToDelete,
+      },
     };
   }
 }

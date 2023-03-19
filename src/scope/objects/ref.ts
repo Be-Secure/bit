@@ -1,5 +1,5 @@
-import Repository from './repository';
 import BitObject from './object';
+import Repository from './repository';
 
 export default class Ref {
   hash: string;
@@ -13,6 +13,10 @@ export default class Ref {
     return this.hash;
   }
 
+  toShortString() {
+    return this.hash.substring(0, 9);
+  }
+
   load(repository: Repository, throws = false): Promise<BitObject> {
     return repository.load(this, throws);
   }
@@ -23,6 +27,14 @@ export default class Ref {
 
   loadRaw(repo: Repository): Promise<Buffer> {
     return repo.loadRaw(this);
+  }
+
+  isEqual(ref: Ref): boolean {
+    return this.toString() === ref.toString();
+  }
+
+  clone() {
+    return new Ref(this.hash);
   }
 
   static from(hash: string): Ref {

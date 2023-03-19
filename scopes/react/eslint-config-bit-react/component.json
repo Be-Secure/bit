@@ -1,0 +1,52 @@
+{
+  "componentId": {
+    "name": "react",
+    "version": "0.0.10"
+  },
+  "propagate": true,
+  "extensions": {
+    "teambit.pkg/pkg": {
+      "packageManagerPublishArgs": [
+        "--access public"
+      ],
+      "packageJson": {
+        "name": "@teambit/{scope}.{name}",
+        "private": false,
+        "license": "Apache-2.0",
+        "engines": {
+          "node": ">=12.22.0"
+        },
+        "repository": {
+          "type": "git",
+          "url": "https://github.com/teambit/bit"
+        },
+        "keywords": [
+          "bit",
+          "components",
+          "collaboration",
+          "web",
+          "react",
+          "react-components"
+        ]
+      }
+    },
+    "teambit.dependencies/dependency-resolver": {
+      "policy": {
+        "dependencies": {
+          "@typescript-eslint/eslint-plugin": "5.35.1",
+          "@typescript-eslint/parser": "5.35.1",
+          "eslint-config-airbnb-typescript": "12.0.0",
+          "eslint-config-prettier": "8.5.0",
+          "@teambit/legacy": "-"
+        },
+        "devDependencies": {
+          "@teambit/legacy": "-"
+        },
+        "peerDependencies": {
+          "eslint": "> 7.0.0",
+          "@teambit/legacy": "1.0.462"
+        }
+      }
+    }
+  }
+}

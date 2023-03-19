@@ -1,19 +1,17 @@
 import addBindingPrefixDeclartaion from './add-binding-prefix';
-import changeVersionToSemVerDeclartaion from './to-semver-migration';
 import changeImportSpecifiersToArray from './change-import-specifiers-to-array';
-import implSpecsToFilesDeclartaion from './to-files';
 import ensureMainFileDeclartaion from './ensure-main-file';
-import specsResultstoArrayDeclartaion from './specs-results-to-array';
-import updateBindingPrefixToNewDefault from './update-binding-prefix-to-new-default';
 import removeLatestFromCompiler from './remove-latest-from-compiler';
+import implSpecsToFilesDeclartaion from './to-files';
+import changeVersionToSemVerDeclartaion from './to-semver-migration';
+import updateBindingPrefixToNewDefault from './update-binding-prefix-to-new-default';
 
 export {
   addBindingPrefixDeclartaion,
   changeVersionToSemVerDeclartaion,
   implSpecsToFilesDeclartaion,
-  specsResultstoArrayDeclartaion,
   ensureMainFileDeclartaion,
   changeImportSpecifiersToArray,
   updateBindingPrefixToNewDefault,
-  removeLatestFromCompiler
+  removeLatestFromCompiler,
 };

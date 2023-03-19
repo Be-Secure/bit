@@ -1,12 +1,14 @@
-import * as path from 'path';
 import fs from 'fs-extra';
+import * as path from 'path';
+
+import { generateRandomStr } from '../utils';
 import CommandHelper from './e2e-command-helper';
+import ExtensionsHelper from './e2e-extensions-helper';
+import FixtureHelper, { GenerateEnvJsoncOptions } from './e2e-fixtures-helper';
 import FsHelper from './e2e-fs-helper';
 import { ensureAndWriteJson } from './e2e-helper';
 import ScopeHelper from './e2e-scope-helper';
-import FixtureHelper from './e2e-fixtures-helper';
 import ScopesData from './e2e-scopes';
-import { generateRandomStr } from '../utils';
 
 export default class EnvHelper {
   command: CommandHelper;
@@ -19,18 +21,21 @@ export default class EnvHelper {
   dummyCompilerCreated: boolean;
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   dummyTesterCreated: boolean;
+  extensions: ExtensionsHelper;
   constructor(
     command: CommandHelper,
     fsHelper: FsHelper,
     scopes: ScopesData,
     scopeHelper: ScopeHelper,
-    fixtures: FixtureHelper
+    fixtures: FixtureHelper,
+    extensions: ExtensionsHelper
   ) {
     this.command = command;
     this.fs = fsHelper;
     this.scopes = scopes;
     this.scopeHelper = scopeHelper;
     this.fixtures = fixtures;
+    this.extensions = extensions;
   }
 
   importCompiler(id?: string) {
@@ -53,10 +58,10 @@ export default class EnvHelper {
         tsconfig: {
           compilerOptions: {
             target: 'ES5',
-            module: 'CommonJS'
-          }
-        }
-      }
+            module: 'CommonJS',
+          },
+        },
+      },
     };
   }
 
@@ -130,8 +135,8 @@ export default class EnvHelper {
       version: '1.0.0',
       dependencies: {
         mocha: '6.1.4',
-        chai: '4.2.0'
-      }
+        chai: '4.2.0',
+      },
     });
     this.command.runCmd('npm install', tempScopePath);
     this.command.addComponent('tester.js', { i: 'testers/dummy' }, tempScopePath);
@@ -162,7 +167,7 @@ export default class EnvHelper {
     const babelCorePackageJson = { name: 'babel-core', version: '6.25.0' };
     const babelPluginTransformObjectRestSpreadPackageJson = {
       name: 'babel-plugin-transform-object-rest-spread',
-      version: '6.23.0'
+      version: '6.23.0',
     };
     const babelPresetLatestPackageJson = { name: 'babel-preset-latest', version: '6.24.1' };
     const vinylPackageJson = { name: 'vinyl', version: '2.1.0' };
@@ -192,5 +197,68 @@ export default class EnvHelper {
     this.scopeHelper.addRemoteScope(this.scopes.envPath);
     this.compilerCreated = true;
     return true;
+  }
+
+  /**
+   * set up a new environment with two compilers, babel for the dists and ts for the d.ts files
+   * returns the env name.
+   */
+  setBabelWithTsHarmony(): string {
+    const EXTENSIONS_BASE_FOLDER = 'multiple-compilers-env';
+    this.fixtures.copyFixtureExtensions(EXTENSIONS_BASE_FOLDER);
+    this.command.addComponent(EXTENSIONS_BASE_FOLDER);
+    this.extensions.addExtensionToVariant(EXTENSIONS_BASE_FOLDER, 'teambit.harmony/aspect');
+    this.command.link();
+    this.extensions.addExtensionToVariant(EXTENSIONS_BASE_FOLDER, 'teambit.dependencies/dependency-resolver', {
+      policy: {
+        dependencies: {
+          '@babel/runtime': '^7.8.4',
+          '@babel/core': '7.11.6',
+          '@babel/preset-env': '7.11.5',
+          '@babel/preset-typescript': '7.10.4',
+          '@babel/plugin-proposal-class-properties': '7.10.4',
+        },
+      },
+    });
+    this.command.install();
+    this.command.compile();
+    return EXTENSIONS_BASE_FOLDER;
+  }
+
+  setCustomEnv(extensionsBaseFolder = 'node-env'): string {
+    this.fixtures.copyFixtureExtensions(extensionsBaseFolder);
+    this.command.addComponent(extensionsBaseFolder);
+    this.extensions.addExtensionToVariant(extensionsBaseFolder, 'teambit.envs/env');
+    this.command.link();
+    this.command.install();
+    this.command.compile();
+    return extensionsBaseFolder;
+  }
+
+  /**
+   * This will generate env in the new format (using the *.bit-env.* plugin)
+   * @param extensionsBaseFolder
+   * @returns
+   */
+  setCustomNewEnv(
+    extensionsBaseFolder = 'react-based-env',
+    basePackages: string[] = ['@teambit/react.react-env'],
+    envJsoncOptions: GenerateEnvJsoncOptions
+  ): string {
+    this.fixtures.copyFixtureExtensions(extensionsBaseFolder);
+    this.command.addComponent(extensionsBaseFolder);
+    this.fixtures.generateEnvJsoncFile(extensionsBaseFolder, envJsoncOptions);
+    this.extensions.addExtensionToVariant(extensionsBaseFolder, 'teambit.envs/env');
+    this.command.setEnv(extensionsBaseFolder, 'teambit.envs/env');
+    this.command.link();
+    this.command.install(basePackages.join(' '));
+    // this.command.compile();
+    return extensionsBaseFolder;
+  }
+
+  getComponentEnv(id: string): string {
+    const show = this.command.showComponentParsedHarmony(id);
+    const env = show.find((fragment) => fragment.title === 'env');
+    return env.json;
   }
 }

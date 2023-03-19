@@ -1,7 +1,8 @@
 import chalk from 'chalk';
-import { LegacyCommand } from '../../legacy-command';
+
 import { dependencyStatus } from '../../../api/consumer';
-import { DependencyStatusResult, DependencyStatusProps } from '../../../consumer/component-ops/dependency-status';
+import { DependencyStatusProps, DependencyStatusResult } from '../../../consumer/component-ops/dependency-status';
+import { LegacyCommand } from '../../legacy-command';
 
 export default class DependencyStatus implements LegacyCommand {
   name = 'dependency-status [mainFile...]';
@@ -13,7 +14,7 @@ export default class DependencyStatus implements LegacyCommand {
 
   action([mainFile]: [string[]]): Promise<DependencyStatusResult> {
     const dependencyStatusProps: DependencyStatusProps = {
-      mainFile
+      mainFile,
     };
     return dependencyStatus(dependencyStatusProps);
   }
@@ -23,7 +24,7 @@ export default class DependencyStatus implements LegacyCommand {
       return output;
     }
     let output = chalk.red('The following file exist in dependency tree but are not a component:\n');
-    const files = dependencyStatusResult.missingFiles.map(missingFile => {
+    const files = dependencyStatusResult.missingFiles.map((missingFile) => {
       const file = chalk.bold(missingFile);
       return file;
     });

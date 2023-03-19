@@ -1,15 +1,18 @@
 /* eslint max-classes-per-file: 0 */
-import rightpad from 'pad-right';
 import chalk from 'chalk';
-import { LegacyCommand } from '../../legacy-command';
-import { BASE_DOCS_DOMAIN } from '../../../constants';
+import rightpad from 'pad-right';
+
 // import { config } from '../../../api/consumer';
 // const config = require('../../../api/consumer/lib/global-config');
 import * as config from '../../../api/consumer/lib/global-config';
+import { BASE_DOCS_DOMAIN } from '../../../constants';
+import { Group } from '../../command-groups';
+import { LegacyCommand } from '../../legacy-command';
 
 class ConfigSet implements LegacyCommand {
   name = 'set <key> <val>';
   description = 'set a global configuration';
+  baseUrl = 'reference/config/bit-config/';
   alias = '';
   skipWorkspace = true;
   opts = [];
@@ -50,7 +53,7 @@ class ConfigList implements LegacyCommand {
 
   report(conf: { [key: string]: string }): string {
     return Object.entries(conf)
-      .map(tuple => {
+      .map((tuple) => {
         return tuple.join('     ');
       })
       .join('\n');
@@ -74,7 +77,9 @@ class ConfigDel implements LegacyCommand {
 
 export default class Config implements LegacyCommand {
   name = 'config';
-  description = `global config management.\n  https://${BASE_DOCS_DOMAIN}/docs/conf-config`;
+  description = 'global config management';
+  extendedDescription = `https://${BASE_DOCS_DOMAIN}/config/bit-config`;
+  group: Group = 'general';
   alias = '';
   commands = [new ConfigSet(), new ConfigDel(), new ConfigGet(), new ConfigList()];
   opts = [];
@@ -86,7 +91,7 @@ export default class Config implements LegacyCommand {
 
   report(conf: { [key: string]: string }): string {
     return Object.entries(conf)
-      .map(tuple => {
+      .map((tuple) => {
         tuple[0] = rightpad(tuple[0], 30, ' ');
         return tuple.join('');
       })

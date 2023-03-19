@@ -1,13 +1,15 @@
 import { expect } from 'chai';
+
+import { BitId, BitIds } from '../bit-id';
 import RemovedObjects from './removed-components';
-import { BitIds, BitId } from '../bit-id';
 
 describe('RemovedComponents', () => {
   const payload = {
     removedComponentIds: [],
     missingComponents: [],
-    removedDependencies: [],
-    dependentBits: {}
+    removedFromLane: [],
+    dependentBits: {},
+    removedLanes: [],
   };
   describe('fromObjects', () => {
     describe('with dependentBits', () => {
@@ -17,8 +19,8 @@ describe('RemovedComponents', () => {
         payloadWithDependents.dependentBits = {
           'sc/utils/is-type': [
             { scope: 'sc', box: null, name: 'bar/foo', version: null },
-            { scope: 'sc', box: null, name: 'utils/is-string', version: null }
-          ]
+            { scope: 'sc', box: null, name: 'utils/is-string', version: null },
+          ],
         };
         removeComponents = RemovedObjects.fromObjects(payloadWithDependents);
       });
@@ -27,13 +29,13 @@ describe('RemovedComponents', () => {
       });
       it('dependentBits values should be BitIds', () => {
         expect(removeComponents.dependentBits).to.be.an('object');
-        Object.keys(removeComponents.dependentBits).forEach(dependent => {
+        Object.keys(removeComponents.dependentBits).forEach((dependent) => {
           expect(removeComponents.dependentBits[dependent]).to.be.instanceOf(BitIds);
         });
       });
       it('each BitIds should have BitId objects', () => {
-        Object.keys(removeComponents.dependentBits).forEach(dependent => {
-          removeComponents.dependentBits[dependent].forEach(b => expect(b).to.be.instanceOf(BitId));
+        Object.keys(removeComponents.dependentBits).forEach((dependent) => {
+          removeComponents.dependentBits[dependent].forEach((b) => expect(b).to.be.instanceOf(BitId));
         });
       });
     });

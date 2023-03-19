@@ -1,58 +1,24 @@
-import * as path from 'path';
-import R from 'ramda';
-import * as RA from 'ramda-adjunct';
 import fs from 'fs-extra';
-import { BitIds, BitId } from '../../bit-id';
-import { filterObject } from '../../utils';
-import { ExtensionOptions } from '../../legacy-extensions/extension';
-import { EnvExtensionOptions, EnvType } from '../../legacy-extensions/env-extension-types';
-import { PathOsBased, PathLinux, PathOsBasedAbsolute, PathOsBasedRelative } from '../../utils/path';
-import {
-  BIT_JSON,
-  NO_PLUGIN_TYPE,
-  COMPILER_ENV_TYPE,
-  DEFAULT_LANGUAGE,
-  DEFAULT_BINDINGS_PREFIX,
-  DEFAULT_EXTENSIONS,
-  PACKAGE_JSON
-} from '../../constants';
+import * as path from 'path';
+import { pickBy } from 'lodash';
+import R from 'ramda';
+import { BitIds } from '../../bit-id';
+import { BIT_JSON, DEFAULT_BINDINGS_PREFIX, DEFAULT_EXTENSIONS, DEFAULT_LANGUAGE, PACKAGE_JSON } from '../../constants';
 import logger from '../../logger/logger';
-import JSONFile from '../component/sources/json-file';
+import { PathLinux, PathOsBased, PathOsBasedAbsolute, PathOsBasedRelative } from '../../utils/path';
 import PackageJsonFile from '../component/package-json-file';
-import DataToPersist from '../component/sources/data-to-persist';
 import { AbstractVinyl } from '../component/sources';
+import DataToPersist from '../component/sources/data-to-persist';
+import JSONFile from '../component/sources/json-file';
 import { ExtensionDataList } from './extension-data';
-
-export type RegularExtensionObject = {
-  rawConfig: Record<string, any>;
-  options: ExtensionOptions;
-};
 
 export type EnvFile = {
   [key: string]: PathLinux;
 };
 
-export type EnvExtensionObject = {
-  rawConfig: Record<string, any>;
-  options: EnvExtensionOptions;
-  files: string[];
-};
-
-export type TesterExtensionObject = EnvExtensionObject;
-
-export type CompilerExtensionObject = EnvExtensionObject;
-
-export type Envs = { [envName: string]: EnvExtensionObject };
-export type Compilers = { [compilerName: string]: CompilerExtensionObject };
-export type Testers = { [testerName: string]: TesterExtensionObject };
-
 export type AbstractConfigProps = {
-  compiler?: string | Compilers;
-  tester?: string | Testers;
   dependencies?: Record<string, any>;
   devDependencies?: Record<string, any>;
-  compilerDependencies?: Record<string, any>;
-  testerDependencies?: Record<string, any>;
   lang?: string;
   bindingPrefix?: string;
   extensions?: ExtensionDataList;
@@ -67,16 +33,10 @@ export type AbstractConfigProps = {
 export default class AbstractConfig {
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   path: string;
-  _compiler: Compilers | string;
-  _tester: Testers | string;
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   dependencies: { [key: string]: string };
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   devDependencies: { [key: string]: string };
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  compilerDependencies: { [key: string]: string };
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  testerDependencies: { [key: string]: string };
   lang: string;
   bindingPrefix: string;
   extensions: ExtensionDataList;
@@ -84,71 +44,9 @@ export default class AbstractConfig {
   writeToBitJson = false;
 
   constructor(props: AbstractConfigProps) {
-    this._compiler = props.compiler || {};
-    this._tester = props.tester || {};
     this.lang = props.lang || DEFAULT_LANGUAGE;
     this.bindingPrefix = props.bindingPrefix || DEFAULT_BINDINGS_PREFIX;
     this.extensions = props.extensions || new ExtensionDataList();
-  }
-
-  get compiler(): Compilers | undefined {
-    const compilerObj = AbstractConfig.transformEnvToObject(this._compiler);
-    if (R.isEmpty(compilerObj)) return undefined;
-    return compilerObj;
-  }
-
-  setCompiler(compiler: string | Compilers) {
-    this._compiler = AbstractConfig.transformEnvToObject(compiler);
-  }
-
-  get tester(): Testers | undefined {
-    const testerObj = AbstractConfig.transformEnvToObject(this._tester);
-    if (R.isEmpty(testerObj)) return undefined;
-    return testerObj;
-  }
-
-  setTester(tester: string | Testers) {
-    this._tester = AbstractConfig.transformEnvToObject(tester);
-  }
-
-  addDependencies(bitIds: BitId[]): this {
-    const idObjects = R.mergeAll(bitIds.map(bitId => bitId.toObject()));
-    this.dependencies = R.merge(this.dependencies, idObjects);
-    return this;
-  }
-
-  addDependency(bitId: BitId): this {
-    this.dependencies = R.merge(this.dependencies, bitId.toObject());
-    return this;
-  }
-
-  hasCompiler(): boolean {
-    return !!this.compiler && this._compiler !== NO_PLUGIN_TYPE && !R.isEmpty(this.compiler);
-  }
-
-  hasTester(): boolean {
-    return !!this.tester && this._tester !== NO_PLUGIN_TYPE && !R.isEmpty(this.tester);
-  }
-
-  getEnvsByType(type: EnvType): Compilers | null | undefined | Testers {
-    if (type === COMPILER_ENV_TYPE) {
-      return this.compiler;
-    }
-    return this.tester;
-  }
-
-  /**
-   * if there is only one env (compiler/tester) and it doesn't have any special configuration, only
-   * the name, convert it to a string.
-   */
-  static convertEnvToStringIfPossible(envObj: Envs | null | undefined): string | null | undefined | Envs {
-    if (!envObj) return undefined;
-    if (Object.keys(envObj).length !== 1) return envObj; // it has more than one id
-    const envId = Object.keys(envObj)[0];
-    if (RA.isNilOrEmpty(envObj[envId].rawConfig) && RA.isNilOrEmpty(envObj[envId].options)) {
-      return envId;
-    }
-    return envObj;
   }
 
   getDependencies(): BitIds {
@@ -164,16 +62,12 @@ export default class AbstractConfig {
       return true;
     };
 
-    return filterObject(
+    return pickBy(
       {
         lang: this.lang,
         bindingPrefix: this.bindingPrefix,
-        env: {
-          compiler: AbstractConfig.convertEnvToStringIfPossible(this.compiler),
-          tester: AbstractConfig.convertEnvToStringIfPossible(this.tester)
-        },
         dependencies: this.dependencies,
-        extensions: this.extensions?.toObject()
+        extensions: this.extensions?.toConfigObject(),
       },
       isPropDefaultOrNull
     );
@@ -181,7 +75,7 @@ export default class AbstractConfig {
 
   async write({
     workspaceDir,
-    componentDir
+    componentDir,
   }: {
     workspaceDir: PathOsBasedAbsolute;
     componentDir?: PathOsBasedRelative;
@@ -196,7 +90,7 @@ export default class AbstractConfig {
 
   async prepareToWrite({
     workspaceDir,
-    componentDir = '.'
+    componentDir = '.',
   }: {
     workspaceDir: PathOsBasedAbsolute;
     componentDir?: PathOsBasedRelative;
@@ -207,7 +101,7 @@ export default class AbstractConfig {
 
   async toVinyl({
     workspaceDir,
-    componentDir = '.'
+    componentDir = '.',
   }: {
     workspaceDir: PathOsBasedAbsolute;
     componentDir?: PathOsBasedRelative;
@@ -246,7 +140,7 @@ export default class AbstractConfig {
     try {
       const file = await fs.readJson(jsonFilePath);
       return file;
-    } catch (e) {
+    } catch (e: any) {
       if (e.code === 'ENOENT') return null;
       throw e;
     }
@@ -261,17 +155,5 @@ export default class AbstractConfig {
       return true;
     }
     return false;
-  }
-
-  static transformEnvToObject(env: string | Record<string, any>): Envs {
-    if (typeof env === 'string') {
-      if (env === NO_PLUGIN_TYPE) return {};
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      return {
-        [env]: {}
-      };
-    }
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return env;
   }
 }

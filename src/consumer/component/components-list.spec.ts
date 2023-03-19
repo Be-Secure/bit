@@ -1,22 +1,23 @@
 import { expect } from 'chai';
-import ComponentsList from './components-list';
-import { ModelComponent } from '../../scope/models';
-import { BitId, BitIds } from '../../bit-id';
 
-describe('ComponentList', function() {
+import { BitId, BitIds } from '../../bit-id';
+import { ModelComponent } from '../../scope/models';
+import ComponentsList from './components-list';
+
+describe('ComponentList', function () {
+  // @ts-ignore
   this.timeout(0);
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   const getModelComponent = () => ModelComponent.fromBitId({ name: 'myName', scope: 'scope' });
-  const getScope = modelComponent => ({
+  const getScope = (modelComponent) => ({
     listLocal: () => {
       return modelComponent ? Promise.resolve([modelComponent]) : Promise.resolve([]);
-    }
+    },
   });
-  describe('listLocalScope', function() {
-    let modelComponent;
+  describe('listLocalScope', function () {
     before(() => {
+      // @ts-ignore
       this.timeout(0);
-      modelComponent = getModelComponent();
     });
     it('should return an empty array when there are no components in the scope', async () => {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -25,38 +26,21 @@ describe('ComponentList', function() {
       const results = await ComponentsList.listLocalScope(scope);
       expect(results).to.deep.equal([]);
     });
-    it('should return results with the correct id', async () => {
-      const scope = getScope(modelComponent);
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      const results = await ComponentsList.listLocalScope(scope);
-      const result = results[0];
-      expect(result).to.have.property('id');
-      expect(result.id).to.be.an.instanceOf(BitId);
-    });
-    it('should return results with the correct deprecated status', async () => {
-      modelComponent.deprecated = true;
-      const scope = getScope(modelComponent);
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      const results = await ComponentsList.listLocalScope(scope);
-      const result = results[0];
-      expect(result).to.have.property('deprecated');
-      expect(result.deprecated).to.be.true;
-    });
   });
   describe('listScope', () => {
     let componentList;
     const scope = {};
     before(() => {
-      const bitMap = { getAuthoredAndImportedBitIds: () => new BitIds() };
-      const consumer = { scope, bitMap };
+      const bitMap = { getAllBitIds: () => new BitIds() };
+      const consumer = { scope, bitMap, getCurrentLaneId: () => {} };
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       componentList = new ComponentsList(consumer);
     });
     it('should return results with the correct id', async () => {
       const modelComponent = getModelComponent();
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      scope.list = async () => [modelComponent];
-      const results = await componentList.listScope(false, true);
+      scope.listIncludeRemoteHead = async () => [modelComponent];
+      const results = await componentList.listAll(false, true);
       const result = results[0];
       expect(result).to.have.property('id');
       expect(result.id).to.be.an.instanceOf(BitId);
@@ -72,13 +56,13 @@ describe('ComponentList', function() {
           BitId.parse('utils/fs/read'),
           BitId.parse('utils/fs/write'),
           BitId.parse('bar/foo'),
-          BitId.parse('vuz/vuz')
+          BitId.parse('vuz/vuz'),
         ];
       });
       const expectToMatch = (idWithWildCard, expectedResults) => {
         const results = ComponentsList.filterComponentsByWildcard(bitIds, idWithWildCard);
-        const resultsStr = results.map(result => result.toString());
-        expectedResults.forEach(expectedResult => expect(resultsStr).to.include(expectedResult));
+        const resultsStr = results.map((result) => result.toString());
+        expectedResults.forEach((expectedResult) => expect(resultsStr).to.include(expectedResult));
         expect(results.length).to.equal(expectedResults.length);
       };
       it('should match utils/is/*', () => {
@@ -94,7 +78,7 @@ describe('ComponentList', function() {
           'utils/fs/read',
           'utils/fs/write',
           'bar/foo',
-          'vuz/vuz'
+          'vuz/vuz',
         ]);
       });
       it('should match */fs/*', () => {

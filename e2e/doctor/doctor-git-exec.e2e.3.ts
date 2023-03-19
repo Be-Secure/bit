@@ -1,13 +1,13 @@
 import { expect } from 'chai';
-import Helper from '../../src/e2e-helper/e2e-helper';
-import { DIAGNOSIS_NAME } from '../../src/doctor/core-diagnoses/validate-git-exec';
 
-describe('bit doctor - git exec validation', function() {
+import { DIAGNOSIS_NAME } from '../../src/doctor/core-diagnoses/validate-git-exec';
+import Helper from '../../src/e2e-helper/e2e-helper';
+
+describe('bit doctor - git exec validation', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures('legacy-workspace-config');
   });
 
   after(() => {

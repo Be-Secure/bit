@@ -1,13 +1,12 @@
-import * as path from 'path';
 import Bluebird from 'bluebird';
 import fs from 'fs-extra';
-import { Capsule } from '../../../extensions/isolator/capsule';
-import AbstractVinyl from './abstract-vinyl';
+import * as path from 'path';
 import Symlink from '../../../links/symlink';
 import logger from '../../../logger/logger';
-import RemovePath from './remove-path';
+import { concurrentIOLimit } from '../../../utils/concurrency';
 import removeFilesAndEmptyDirsRecursively from '../../../utils/fs/remove-files-and-empty-dirs-recursively';
-import { CONCURRENT_IO_LIMIT as concurrency } from '../../../constants';
+import AbstractVinyl from './abstract-vinyl';
+import RemovePath from './remove-path';
 
 export default class DataToPersist {
   files: AbstractVinyl[];
@@ -26,7 +25,7 @@ export default class DataToPersist {
     }
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const existingFileIndex = this.files.findIndex(existingFile => existingFile.path === file.path);
+    const existingFileIndex = this.files.findIndex((existingFile) => existingFile.path === file.path);
     if (existingFileIndex !== -1) {
       if (file.override) {
         // delete existing file
@@ -40,7 +39,7 @@ export default class DataToPersist {
     this.files.push(file);
   }
   addManyFiles(files: AbstractVinyl[] = []) {
-    files.forEach(file => this.addFile(file));
+    files.forEach((file) => this.addFile(file));
   }
   removePath(pathToRemove: RemovePath) {
     if (!pathToRemove) throw new Error('failed adding a path to remove into DataToPersist');
@@ -49,7 +48,7 @@ export default class DataToPersist {
     }
   }
   removeManyPaths(pathsToRemove: RemovePath[] = []) {
-    pathsToRemove.forEach(pathToRemove => this.removePath(pathToRemove));
+    pathsToRemove.forEach((pathToRemove) => this.removePath(pathToRemove));
   }
   addSymlink(symlink: Symlink) {
     if (!symlink.src) throw new Error('failed adding a symlink into DataToPersist, src is empty');
@@ -57,7 +56,7 @@ export default class DataToPersist {
     this.symlinks.push(symlink);
   }
   addManySymlinks(symlinks: Symlink[] = []) {
-    symlinks.forEach(symlink => this.addSymlink(symlink));
+    symlinks.forEach((symlink) => this.addSymlink(symlink));
   }
   merge(dataToPersist: DataToPersist | null | undefined) {
     if (!dataToPersist) return;
@@ -77,16 +76,16 @@ export default class DataToPersist {
     this._log();
     this._validateRelative();
     if (!opts.keepExistingCapsule) {
-      await Promise.all(this.remove.map(pathToRemove => capsule.removePath(pathToRemove.path)));
+      await Promise.all(this.remove.map((pathToRemove) => capsule.removePath(pathToRemove.path)));
     }
     await Promise.all(
-      this.files.map(file =>
+      this.files.map((file) =>
         this._writeFileToCapsule(capsule, file, { overwriteExistingFile: !!opts.keepExistingCapsule })
       )
     );
-    await Promise.all(this.symlinks.map(symlink => this.atomicSymlink(capsule, symlink)));
+    await Promise.all(this.symlinks.map((symlink) => this.atomicSymlink(capsule, symlink)));
   }
-  async _writeFileToCapsule(capsule: Capsule, file: AbstractVinyl, opts = { overwriteExistingFile: false }) {
+  async _writeFileToCapsule(capsule: any, file: AbstractVinyl, opts = { overwriteExistingFile: false }) {
     // overwriteExistingFile: if a file with the same name exists in the capsule, overwrite it
     if (opts.overwriteExistingFile) {
       await capsule.removePath(file.path);
@@ -103,7 +102,7 @@ export default class DataToPersist {
         await fs.lstat(absPath); // if no errors have been thrown, the file exists
         logger.debug(`skip file ${absPath}, it already exists`);
         return null;
-      } catch (err) {
+      } catch (err: any) {
         if (err.code !== 'ENOENT') {
           throw err;
         }
@@ -114,10 +113,10 @@ export default class DataToPersist {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     return capsule.outputFile(file.path, file.contents);
   }
-  async atomicSymlink(capsule: Capsule, symlink: Symlink) {
+  async atomicSymlink(capsule: any, symlink: Symlink) {
     try {
       await capsule.symlink(symlink.src, symlink.dest);
-    } catch (e) {
+    } catch (e: any) {
       // On windows when the link already created by npm we got EPERM error
       // TODO: We should handle this better and avoid creating the symlink if it's already exists
       if (e.code !== 'EEXIST' && e.code !== 'EPERM') {
@@ -128,19 +127,19 @@ export default class DataToPersist {
     }
   }
   addBasePath(basePath: string) {
-    this.files.forEach(file => {
+    this.files.forEach((file) => {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       this._assertRelative(file.base);
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       file.updatePaths({ newBase: path.join(basePath, file.base) });
     });
-    this.symlinks.forEach(symlink => {
+    this.symlinks.forEach((symlink) => {
       this._assertRelative(symlink.src);
       this._assertRelative(symlink.dest);
       symlink.src = path.join(basePath, symlink.src);
       symlink.dest = path.join(basePath, symlink.dest);
     });
-    this.remove.forEach(removePath => {
+    this.remove.forEach((removePath) => {
       this._assertRelative(removePath.path);
       removePath.path = path.join(basePath, removePath.path);
     });
@@ -150,86 +149,89 @@ export default class DataToPersist {
    */
   toConsole() {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    console.log(`\nfiles: ${this.files.map(f => f.path).join('\n')}`); // eslint-disable-line no-console
-    console.log(`\nsymlinks: ${this.symlinks.map(s => `src: ${s.src}, dest: ${s.dest}`).join('\n')}`); // eslint-disable-line no-console
-    console.log(`remove: ${this.remove.map(r => r.path).join('\n')}`); // eslint-disable-line no-console
+    console.log(`\nfiles: ${this.files.map((f) => f.path).join('\n')}`); // eslint-disable-line no-console
+    console.log(`\nsymlinks: ${this.symlinks.map((s) => `src: ${s.src}, dest: ${s.dest}`).join('\n')}`); // eslint-disable-line no-console
+    console.log(`remove: ${this.remove.map((r) => r.path).join('\n')}`); // eslint-disable-line no-console
   }
   filterByPath(filterFunc: Function): DataToPersist {
     const dataToPersist = new DataToPersist();
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    dataToPersist.addManyFiles(this.files.filter(f => filterFunc(f.path)));
-    dataToPersist.removeManyPaths(this.remove.filter(r => filterFunc(r.path)));
-    dataToPersist.addManySymlinks(this.symlinks.filter(s => filterFunc(s.dest)));
+    dataToPersist.addManyFiles(this.files.filter((f) => filterFunc(f.path)));
+    dataToPersist.removeManyPaths(this.remove.filter((r) => filterFunc(r.path)));
+    dataToPersist.addManySymlinks(this.symlinks.filter((s) => filterFunc(s.dest)));
     return dataToPersist;
   }
   async _persistFilesToFS() {
-    return Bluebird.map(this.files, file => file.write(), { concurrency });
+    const concurrency = concurrentIOLimit();
+    return Bluebird.map(this.files, (file) => file.write(), { concurrency });
   }
   async _persistSymlinksToFS() {
-    return Bluebird.map(this.symlinks, symlink => symlink.write(), { concurrency });
+    const concurrency = concurrentIOLimit();
+    return Bluebird.map(this.symlinks, (symlink) => symlink.write(), { concurrency });
   }
   async _deletePathsFromFS() {
-    const pathWithRemoveItsDirIfEmptyEnabled = this.remove.filter(p => p.removeItsDirIfEmpty).map(p => p.path);
-    const restPaths = this.remove.filter(p => !p.removeItsDirIfEmpty);
+    const pathWithRemoveItsDirIfEmptyEnabled = this.remove.filter((p) => p.removeItsDirIfEmpty).map((p) => p.path);
+    const restPaths = this.remove.filter((p) => !p.removeItsDirIfEmpty);
     if (pathWithRemoveItsDirIfEmptyEnabled.length) {
       await removeFilesAndEmptyDirsRecursively(pathWithRemoveItsDirIfEmptyEnabled);
     }
-    return Bluebird.map(restPaths, removePath => removePath.persistToFS(), { concurrency });
+    const concurrency = concurrentIOLimit();
+    return Bluebird.map(restPaths, (removePath) => removePath.persistToFS(), { concurrency });
   }
   _validateAbsolute() {
     // it's important to make sure that all paths are absolute before writing them to the
     // filesystem. relative paths won't work when running bit commands from an inner dir
-    const validateAbsolutePath = pathToValidate => {
+    const validateAbsolutePath = (pathToValidate) => {
       if (!path.isAbsolute(pathToValidate)) {
         throw new Error(`DataToPersist expects ${pathToValidate} to be absolute, got relative`);
       }
     };
-    this.files.forEach(file => {
+    this.files.forEach((file) => {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       validateAbsolutePath(file.path);
     });
-    this.remove.forEach(removePath => {
+    this.remove.forEach((removePath) => {
       validateAbsolutePath(removePath.path);
     });
-    this.symlinks.forEach(symlink => {
+    this.symlinks.forEach((symlink) => {
       validateAbsolutePath(symlink.src);
       validateAbsolutePath(symlink.dest);
     });
   }
   _validateRelative() {
     // it's important to make sure that all paths are relative before writing them to the capsule
-    const validateRelativePath = pathToValidate => {
+    const validateRelativePath = (pathToValidate) => {
       if (path.isAbsolute(pathToValidate)) {
         throw new Error(`DataToPersist expects ${pathToValidate} to be relative, got absolute`);
       }
     };
-    this.files.forEach(file => {
+    this.files.forEach((file) => {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       validateRelativePath(file.path);
     });
-    this.remove.forEach(removePath => {
+    this.remove.forEach((removePath) => {
       validateRelativePath(removePath.path);
     });
-    this.symlinks.forEach(symlink => {
+    this.symlinks.forEach((symlink) => {
       validateRelativePath(symlink.src);
       validateRelativePath(symlink.dest);
     });
   }
   _log() {
     if (this.remove.length) {
-      const pathToDeleteStr = this.remove.map(r => r.path).join('\n');
-      logger.debug(`DateToPersist, paths-to-delete:\n${pathToDeleteStr}`);
+      const pathToDeleteStr = this.remove.map((r) => r.path).join('\n');
+      logger.debug(`DataToPersist, paths-to-delete:\n${pathToDeleteStr}`);
     }
     if (this.files.length) {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      const filesToWriteStr = this.files.map(f => f.path).join('\n');
-      logger.debug(`DateToPersist, paths-to-write:\n${filesToWriteStr}`);
+      const filesToWriteStr = this.files.map((f) => f.path).join('\n');
+      logger.debug(`DataToPersist, paths-to-write:\n${filesToWriteStr}`);
     }
     if (this.symlinks.length) {
       const symlinksStr = this.symlinks
-        .map(symlink => `src (existing): ${symlink.src}\ndest (new): ${symlink.dest}`)
+        .map((symlink) => `src (existing): ${symlink.src}\ndest (new): ${symlink.dest}`)
         .join('\n');
-      logger.debug(`DateToPersist, symlinks:\n${symlinksStr}`);
+      logger.debug(`DataToPersist, symlinks:\n${symlinksStr}`);
     }
   }
   _assertRelative(pathToCheck: string) {
@@ -253,7 +255,7 @@ export default class DataToPersist {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      f => f.path.startsWith(`${file.path}${path.sep}`) || `${file.path}`.startsWith(`${f.path}${path.sep}`)
+      (f) => f.path.startsWith(`${file.path}${path.sep}`) || `${file.path}`.startsWith(`${f.path}${path.sep}`)
     );
     if (directoryCollision) {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!

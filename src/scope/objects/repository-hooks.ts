@@ -1,5 +1,6 @@
-import path from 'path';
 import isRelative from 'is-relative-path';
+import path from 'path';
+
 import { ScopeJson } from '../scope-json';
 
 export type ContentTransformer = (content: Buffer) => Buffer;
@@ -16,7 +17,7 @@ function loadHooks(scopePath: string, scopeJson: ScopeJson): any | undefined {
 }
 
 export function onPersist(scopePath: string, scopeJson: ScopeJson): ContentTransformer {
-  const defaultFunc = content => content;
+  const defaultFunc = (content) => content;
   const hooks = loadHooks(scopePath, scopeJson);
   if (hooks) {
     const onReadFunction = hooks.onPersist;
@@ -28,7 +29,7 @@ export function onPersist(scopePath: string, scopeJson: ScopeJson): ContentTrans
 }
 
 export function onRead(scopePath: string, scopeJson: ScopeJson): ContentTransformer {
-  const defaultFunc = content => content;
+  const defaultFunc = (content) => content;
 
   const hooks = loadHooks(scopePath, scopeJson);
   if (hooks) {

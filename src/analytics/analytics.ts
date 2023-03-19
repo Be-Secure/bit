@@ -1,33 +1,35 @@
 /* eslint max-classes-per-file: 0 */
-import { serializeError } from 'serialize-error';
-import * as path from 'path';
+import { fork } from 'child_process';
 import hashObj from 'object-hash';
-import uniqid from 'uniqid';
-import yn from 'yn';
-import R from 'ramda';
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 import os from 'os';
-import { fork } from 'child_process';
-import { setSync, getSync } from '../api/consumer/lib/global-config';
-import { analyticsPrompt, errorReportingPrompt } from '../prompts';
+import * as path from 'path';
+import R from 'ramda';
+import { serializeError } from 'serialize-error';
+import uniqid from 'uniqid';
+import yn from 'yn';
+
+import { getSync, setSync } from '../api/consumer/lib/global-config';
+import { CLIArgs } from '../cli/command';
 import {
-  CFG_ANALYTICS_USERID_KEY,
-  CFG_ANALYTICS_REPORTING_KEY,
-  CFG_ANALYTICS_ERROR_REPORTS_KEY,
+  BIT_VERSION,
   CFG_ANALYTICS_ANONYMOUS_KEY,
+  CFG_ANALYTICS_ENVIRONMENT_KEY,
+  CFG_ANALYTICS_ERROR_REPORTS_KEY,
+  CFG_ANALYTICS_REPORTING_KEY,
+  CFG_ANALYTICS_USERID_KEY,
   CFG_USER_EMAIL_KEY,
   CFG_USER_NAME_KEY,
   DEFAULT_BIT_ENV,
-  CFG_ANALYTICS_ENVIRONMENT_KEY,
-  BIT_VERSION
 } from '../constants';
+import { analyticsPrompt, errorReportingPrompt } from '../prompts';
 
 const LEVEL = {
   DEBUG: 'debug',
   INFO: 'info',
   WARNING: 'warning',
   ERROR: 'error',
-  FATAL: 'fatal'
+  FATAL: 'fatal',
 };
 
 class Breadcrumb {
@@ -45,7 +47,7 @@ class Analytics {
   static username: string;
   static command: string;
   static release: string;
-  static args: string[];
+  static args: CLIArgs;
   static flags: Record<string, any> = {};
   static success = true;
   static nodeVersion: string;
@@ -68,10 +70,11 @@ class Analytics {
     return newId;
   }
 
-  static promptAnalyticsIfNeeded(cmd: string): Promise<void> {
+  static promptAnalyticsIfNeeded(): Promise<void> {
+    const cmd = process.argv.slice(2);
     function shouldPromptForAnalytics() {
       // do not prompt analytics approval for bit config command (so you can configure it in CI envs)
-      if (cmd.length && cmd[0] !== 'config') {
+      if (cmd.length && cmd[0] !== 'config' && !process.env.CI) {
         const analyticsReporting = getSync(CFG_ANALYTICS_REPORTING_KEY);
         const errorReporting = getSync(CFG_ANALYTICS_ERROR_REPORTS_KEY);
         return R.isNil(analyticsReporting) && R.isNil(errorReporting);
@@ -109,7 +112,7 @@ class Analytics {
       case 'string':
         return this._maskString(value);
       case 'object':
-        if (Array.isArray(value)) return value.map(item => this._hashLightly(item));
+        if (Array.isArray(value)) return value.map((item) => this._hashLightly(item));
         if (value === null) return value;
         return hashObj(value);
       default:
@@ -118,20 +121,20 @@ class Analytics {
   }
   static _hashFlags(flags: Record<string, any>) {
     const hashedFlags = {};
-    const definedFlags = R.filter(flag => typeof flag !== 'undefined', flags);
+    const definedFlags = R.filter((flag) => typeof flag !== 'undefined', flags);
     if (this.anonymous && !R.isEmpty(definedFlags)) {
-      Object.keys(definedFlags).forEach(key => {
+      Object.keys(definedFlags).forEach((key) => {
         hashedFlags[key] = this._hashLightly(flags[key]);
       });
       return hashedFlags;
     }
     return definedFlags;
   }
-  static _hashArgs(args: string[]): string[] {
+  static _hashArgs(args: CLIArgs): CLIArgs {
     if (!this.anonymous) return args;
-    return args.map(arg => this._hashLightly(arg));
+    return args.map((arg) => this._hashLightly(arg));
   }
-  static init(command: string, flags: Record<string, any>, args: string[]) {
+  static init(command: string, flags: Record<string, any>, args: CLIArgs) {
     this.anonymous = yn(getSync(CFG_ANALYTICS_ANONYMOUS_KEY), { default: true });
     this.command = command;
     this.flags = this._hashFlags(flags);
@@ -148,7 +151,7 @@ class Analytics {
     this.environment = getSync(CFG_ANALYTICS_ENVIRONMENT_KEY) || DEFAULT_BIT_ENV;
   }
 
-  static sendData() {
+  static sendData(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.analytics_usage || (this.error_usage && !this.success)) {
         const file = path.join(__dirname, 'analytics-sender.js');
@@ -161,7 +164,7 @@ class Analytics {
           // without it, when the message is large, it exits before the child got the complete message
           resolve();
         });
-        forked.on('error', err => {
+        forked.on('error', (err) => {
           reject(err);
         });
       } else {
@@ -219,7 +222,7 @@ class Analytics {
       breadcrumbs: this.breadcrumbs,
       analytics_usage: this.analytics_usage,
       error_usage: this.analytics_usage,
-      environment: this.environment
+      environment: this.environment,
     };
   }
 }

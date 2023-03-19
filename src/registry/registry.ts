@@ -1,8 +1,9 @@
 /** @flow */
 import fs from 'fs';
-import path from 'path';
 import iniBuilder from 'ini-builder';
+import path from 'path';
 import userHome from 'user-home';
+
 import { DEFAULT_BINDINGS_PREFIX } from '../constants';
 import { PathToNpmrcNotExist, WriteToNpmrcError } from './exceptions';
 
@@ -28,7 +29,7 @@ function mergeOrCreateConfig(
   if (!iniReg) {
     config.push({
       path: [`${DEFAULT_BINDINGS_PREFIX}:registry`],
-      value: url
+      value: url,
     });
   } else {
     iniReg.value = url;
@@ -36,7 +37,7 @@ function mergeOrCreateConfig(
   if (!iniToken) {
     config.push({
       path: [`//${strippedUrl}/:_authToken`],
-      value: token
+      value: token,
     });
   } else {
     iniToken.value = token;
@@ -51,7 +52,7 @@ export default function npmLogin(token: string, pathToNpmrc: string, url: string
     : mergeOrCreateConfig(token, url);
   try {
     fs.writeFileSync(npmrcPath, iniBuilder.serialize(npmrcConfig));
-  } catch (err) {
+  } catch (err: any) {
     throw new WriteToNpmrcError(npmrcPath);
   }
   return npmrcPath;

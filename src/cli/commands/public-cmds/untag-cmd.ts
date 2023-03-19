@@ -1,49 +1,43 @@
-import chalk from 'chalk';
-import { LegacyCommand, CommandOptions } from '../../legacy-command';
-import { unTagAction } from '../../../api/consumer';
-import { untagResult } from '../../../scope/component-ops/untag-component';
-import GeneralError from '../../../error/general-error';
 import { BASE_DOCS_DOMAIN, WILDCARD_HELP } from '../../../constants';
+import { Group } from '../../command-groups';
+import { CommandOptions, LegacyCommand } from '../../legacy-command';
 
 export default class Untag implements LegacyCommand {
-  name = 'untag [id] [version]';
-  description = `revert version(s) tagged for component(s)
-  https://${BASE_DOCS_DOMAIN}/docs/tag-component-version#untagging-components
-  ${WILDCARD_HELP('untag')}`;
+  name = 'untag [component-name] [component-version]';
+  description = 'revert tagged or snapped versions for component(s)';
+  arguments = [
+    {
+      name: 'component-name',
+      description: 'the component name or component id',
+    },
+    {
+      name: 'component-version',
+      description: 'the version to untag (semver for tags. hash for snaps)',
+    },
+  ];
+  group: Group = 'development';
+  extendedDescription = `https://${BASE_DOCS_DOMAIN}/components/tags#undoing-a-tag
+${WILDCARD_HELP('untag')}`;
   alias = '';
   opts = [
     ['a', 'all', 'revert tag for all tagged components'],
+    ['', 'soft', 'harmony - revert only soft-tags (components tagged with --soft flag)'],
     [
       'f',
       'force',
-      'revert the tag even if used as a dependency. WARNING: components that depend on this tag will corrupt'
-    ]
+      'revert the tag even if used as a dependency. WARNING: components that depend on this tag will corrupt',
+    ],
   ] as CommandOptions;
   loader = true;
   migration = true;
+  private = true;
 
-  action(
-    [id, version]: string[],
-    { all, force }: { all: boolean | null | undefined; force: boolean | null | undefined }
-  ): Promise<untagResult[]> {
-    if (!id && !all) {
-      throw new GeneralError('please specify a component ID or use --all flag');
-    }
-
-    if (all) {
-      version = id;
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      return unTagAction(version, force);
-    }
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return unTagAction(version, force, id);
+  action(): any {
+    // eslint-disable-next-line no-console
+    throw new Error(`"bit untag" has been removed, please use "bit reset" instead`);
   }
 
-  report(results: untagResult[]): string {
-    const title = chalk.green(`${results.length} component(s) were untagged:\n`);
-    const components = results.map(result => {
-      return `${chalk.cyan(result.id.toStringWithoutVersion())}. version(s): ${result.versions.join(', ')}`;
-    });
-    return title + components.join('\n');
+  report(): string {
+    throw new Error(`"bit untag" has been removed, please use "bit reset" instead`);
   }
 }

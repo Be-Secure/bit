@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { table } from 'table';
+
 import Diagnosis from '../../doctor/diagnosis';
 
 // const NAME_COLUMN_WIDTH = 100;
@@ -7,8 +8,8 @@ import Diagnosis from '../../doctor/diagnosis';
 
 const tableColumnConfig = {
   columnDefault: {
-    alignment: 'left'
-  }
+    alignment: 'left',
+  },
 };
 
 type DiagnosisRow = [string, string, string];

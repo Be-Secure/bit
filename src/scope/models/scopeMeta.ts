@@ -1,6 +1,6 @@
+import { getStringifyArgs } from '../../utils';
 import BitObject from '../objects/object';
 import Ref from '../objects/ref';
-import { getStringifyArgs } from '../../utils';
 
 type ScopeMetaProps = {
   name: string;
@@ -22,7 +22,7 @@ export default class ScopeMeta extends BitObject {
   toObject(): Record<string, any> {
     return {
       license: this.license,
-      name: this.name
+      name: this.name,
     };
   }
 

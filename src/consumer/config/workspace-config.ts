@@ -1,23 +1,23 @@
 import fs from 'fs-extra';
+import { pickBy } from 'lodash';
 import R from 'ramda';
-import AbstractConfig from './abstract-config';
-import { Compilers, Testers } from './abstract-config';
-import { BitConfigNotFound, InvalidBitJson, InvalidPackageJson } from './exceptions';
+
 import {
   DEFAULT_COMPONENTS_DIR_PATH,
   DEFAULT_DEPENDENCIES_DIR_PATH,
   DEFAULT_PACKAGE_MANAGER,
-  DEFAULT_SAVE_DEPENDENCIES_AS_COMPONENTS
+  DEFAULT_SAVE_DEPENDENCIES_AS_COMPONENTS,
 } from '../../constants';
-import filterObject from '../../utils/filter-object';
-import { PathOsBasedAbsolute, PathOsBased } from '../../utils/path';
 import logger from '../../logger/logger';
 import { isValidPath } from '../../utils';
-import InvalidConfigPropPath from './exceptions/invalid-config-prop-path';
+import { PathOsBased, PathOsBasedAbsolute } from '../../utils/path';
+import { ResolveModulesConfig } from '../component/dependencies/files-dependency-builder/types/dependency-tree-type';
+import AbstractConfig from './abstract-config';
 import ConsumerOverrides from './consumer-overrides';
+import { BitConfigNotFound, InvalidBitJson, InvalidPackageJson } from './exceptions';
+import InvalidConfigPropPath from './exceptions/invalid-config-prop-path';
 import InvalidPackageManager from './exceptions/invalid-package-manager';
 import { ExtensionDataList } from './extension-data';
-import { ResolveModulesConfig } from '../component/dependencies/files-dependency-builder/types/dependency-tree-type';
 import { ILegacyWorkspaceConfig, PackageManagerClients } from './legacy-workspace-config-interface';
 
 const DEFAULT_USE_WORKSPACES = false;
@@ -35,13 +35,11 @@ export type WorkspaceConfigEnsureFunction = (
   workspaceConfigProps: WorkspaceConfigProps
 ) => Promise<ILegacyWorkspaceConfig>;
 
+export type WorkspaceConfigResetFunction = (dirPath: PathOsBasedAbsolute, resetHard: boolean) => Promise<void>;
+
 export type WorkspaceConfigProps = {
-  compiler?: string | Compilers;
-  tester?: string | Testers;
   saveDependenciesAsComponents?: boolean;
   lang?: string;
-  distTarget?: string | undefined;
-  distEntry?: string | undefined;
   componentsDefaultDirectory?: string;
   dependenciesDirectory?: string;
   bindingPrefix?: string;
@@ -57,10 +55,6 @@ export type WorkspaceConfigProps = {
 };
 
 export default class WorkspaceConfig extends AbstractConfig {
-  distTarget: string | undefined; // path where to store build artifacts
-  // path to remove while storing build artifacts. If, for example the code is in 'src' directory, and the component
-  // is-string is in src/components/is-string, the dists files will be in dists/component/is-string (without the 'src')
-  distEntry: string | undefined;
   componentsDefaultDirectory: string;
   dependenciesDirectory: string;
   saveDependenciesAsComponents: boolean; // save hub dependencies as bit components rather than npm packages
@@ -87,14 +81,14 @@ export default class WorkspaceConfig extends AbstractConfig {
   static registerOnWorkspaceConfigEnsuring(func: WorkspaceConfigEnsureFunction) {
     this.workspaceConfigEnsuringRegistry = func;
   }
+  static workspaceConfigResetRegistry: WorkspaceConfigResetFunction;
+  static registerOnWorkspaceConfigReset(func: WorkspaceConfigResetFunction) {
+    this.workspaceConfigResetRegistry = func;
+  }
 
   constructor({
-    compiler,
-    tester,
     saveDependenciesAsComponents = DEFAULT_SAVE_DEPENDENCIES_AS_COMPONENTS,
     lang,
-    distTarget,
-    distEntry,
     componentsDefaultDirectory = DEFAULT_COMPONENTS_DIR_PATH,
     dependenciesDirectory = DEFAULT_DEPENDENCIES_DIR_PATH,
     bindingPrefix,
@@ -106,15 +100,12 @@ export default class WorkspaceConfig extends AbstractConfig {
     manageWorkspaces = DEFAULT_MANAGE_WORKSPACES,
     resolveModules,
     defaultScope,
-    overrides = ConsumerOverrides.load()
+    overrides = ConsumerOverrides.load(),
   }: WorkspaceConfigProps) {
-    super({ compiler, tester, lang, bindingPrefix, extensions });
+    super({ lang, bindingPrefix, extensions });
     if (packageManager !== 'npm' && packageManager !== 'yarn') {
       throw new InvalidPackageManager(packageManager);
     }
-    this.distTarget = distTarget;
-    this.distEntry = distEntry;
-
     this.componentsDefaultDirectory = componentsDefaultDirectory;
     // Make sure we have the component name in the path. otherwise components will be imported to the same dir.
     if (!componentsDefaultDirectory.includes('{name}')) {
@@ -134,7 +125,8 @@ export default class WorkspaceConfig extends AbstractConfig {
 
   toPlainObject() {
     const superObject = super.toPlainObject();
-    let consumerObject = R.merge(superObject, {
+    const consumerObject = {
+      ...superObject,
       componentsDefaultDirectory: this.componentsDefaultDirectory,
       dependenciesDirectory: this.dependenciesDirectory,
       saveDependenciesAsComponents: this.saveDependenciesAsComponents,
@@ -145,16 +137,8 @@ export default class WorkspaceConfig extends AbstractConfig {
       manageWorkspaces: this.manageWorkspaces,
       resolveModules: this.resolveModules,
       defaultScope: this.defaultScope,
-      overrides: this.overrides.overrides
-    });
-    if (this.distEntry || this.distTarget) {
-      const dist = {};
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      if (this.distEntry) dist.entry = this.distEntry;
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      if (this.distTarget) dist.target = this.distTarget;
-      consumerObject = R.merge(consumerObject, { dist });
-    }
+      overrides: this.overrides.overrides,
+    };
 
     const isPropDefault = (val, key) => {
       if (key === 'dependenciesDirectory') return val !== DEFAULT_DEPENDENCIES_DIR_PATH;
@@ -167,7 +151,7 @@ export default class WorkspaceConfig extends AbstractConfig {
       return true;
     };
 
-    return filterObject(consumerObject, isPropDefault);
+    return pickBy(consumerObject, isPropDefault);
   }
 
   static create(workspaceConfigProps: WorkspaceConfigProps): WorkspaceConfig {
@@ -184,17 +168,17 @@ export default class WorkspaceConfig extends AbstractConfig {
   }
 
   static async _ensure(
-    dirPath: PathOsBasedAbsolute,
+    workspacePath: PathOsBasedAbsolute,
     standAlone: boolean,
     workspaceConfigProps: WorkspaceConfigProps = {} as any
   ): Promise<WorkspaceConfig> {
     try {
-      const workspaceConfig = await this.load(dirPath);
+      const workspaceConfig = await this.load(workspacePath);
       return workspaceConfig;
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof BitConfigNotFound || err instanceof InvalidBitJson) {
         const consumerBitJson = this.create(workspaceConfigProps);
-        const packageJsonExists = await AbstractConfig.pathHasPackageJson(dirPath);
+        const packageJsonExists = await AbstractConfig.pathHasPackageJson(workspacePath);
         if (packageJsonExists && !standAlone) {
           consumerBitJson.writeToPackageJson = true;
         } else {
@@ -215,6 +199,8 @@ export default class WorkspaceConfig extends AbstractConfig {
     if (resetHard) {
       await deleteBitJsonFile();
     }
+    const resetFunc = this.workspaceConfigResetRegistry;
+    await resetFunc(dirPath, resetHard);
     await WorkspaceConfig.ensure(dirPath);
   }
 
@@ -222,15 +208,11 @@ export default class WorkspaceConfig extends AbstractConfig {
     this.validate(object);
     const {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      env,
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       lang,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       componentsDefaultDirectory,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       dependenciesDirectory,
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      dist,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       bindingPrefix,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -252,12 +234,10 @@ export default class WorkspaceConfig extends AbstractConfig {
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       defaultScope,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      overrides
+      overrides,
     } = object;
 
     return new WorkspaceConfig({
-      compiler: R.propOr(undefined, 'compiler', env),
-      tester: R.propOr(undefined, 'tester', env),
       lang,
       bindingPrefix,
       extensions,
@@ -270,10 +250,8 @@ export default class WorkspaceConfig extends AbstractConfig {
       useWorkspaces,
       manageWorkspaces,
       resolveModules,
-      distTarget: R.propOr(undefined, 'target', dist),
-      distEntry: R.propOr(undefined, 'entry', dist),
       defaultScope,
-      overrides: ConsumerOverrides.load(overrides)
+      overrides: ConsumerOverrides.load(overrides),
     });
   }
 
@@ -321,7 +299,7 @@ export default class WorkspaceConfig extends AbstractConfig {
 
     const [bitJsonFile, packageJsonFile] = await Promise.all([
       this.loadBitJson(bitJsonPath), // $FlowFixMe
-      this.loadPackageJson(packageJsonPath)
+      this.loadPackageJson(packageJsonPath),
     ]);
     const bitJsonConfig = bitJsonFile || {};
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -343,7 +321,7 @@ export default class WorkspaceConfig extends AbstractConfig {
     try {
       const file = await AbstractConfig.loadJsonFileIfExist(bitJsonPath);
       return file;
-    } catch (e) {
+    } catch (e: any) {
       throw new InvalidBitJson(bitJsonPath);
     }
   }
@@ -351,7 +329,7 @@ export default class WorkspaceConfig extends AbstractConfig {
     try {
       const file = await AbstractConfig.loadJsonFileIfExist(packageJsonPath);
       return file;
-    } catch (e) {
+    } catch (e: any) {
       throw new InvalidPackageJson(packageJsonPath);
     }
   }
@@ -362,7 +340,7 @@ export default class WorkspaceConfig extends AbstractConfig {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     const { componentsDefaultDirectory, dependenciesDirectory } = object;
     const pathsToValidate = { componentsDefaultDirectory, dependenciesDirectory };
-    Object.keys(pathsToValidate).forEach(field => throwForInvalidPath(field, pathsToValidate[field]));
+    Object.keys(pathsToValidate).forEach((field) => throwForInvalidPath(field, pathsToValidate[field]));
     function throwForInvalidPath(fieldName, pathToValidate): void {
       if (pathToValidate && !isValidPath(pathToValidate)) {
         throw new InvalidConfigPropPath(fieldName, pathToValidate);

@@ -1,17 +1,16 @@
-import path from 'path';
-import fs from 'fs-extra';
 import chai, { expect } from 'chai';
+import fs from 'fs-extra';
+import path from 'path';
+import { Extensions } from '../../src/constants';
 import Helper from '../../src/e2e-helper/e2e-helper';
-import { HARMONY_FEATURE } from '../../src/api/consumer/lib/feature-toggle';
 
 chai.use(require('chai-fs'));
 
-describe('compile extension', function() {
+describe('compile extension', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures(HARMONY_FEATURE);
   });
   after(() => {
     helper.scopeHelper.destroy();
@@ -22,13 +21,8 @@ describe('compile extension', function() {
     let appOutput: string;
     before(() => {
       helper.scopeHelper.setNewLocalAndRemoteScopes();
-      helper.bitJsonc.addDefaultScope();
-      appOutput = helper.fixtures.populateComponentsTS();
-      const environments = {
-        env: '@teambit/react',
-        config: {}
-      };
-      helper.extensions.addExtensionToVariant('*', '@teambit/envs', environments);
+      helper.extensions.addExtensionToVariant('*', 'teambit.harmony/node', {});
+      appOutput = helper.fixtures.populateComponentsTS(3);
       scopeBeforeTag = helper.scopeHelper.cloneLocalScope();
     });
     describe('compile from the cmd (compilation for development)', () => {
@@ -36,15 +30,17 @@ describe('compile extension', function() {
         helper.command.runCmd('bit compile');
       });
       it('should not create a capsule as it is not needed for development', () => {
-        const capsulesJson = helper.command.runCmd('bit capsule-list -j');
+        const capsulesJson = helper.command.runCmd('bit capsule list -j');
         const capsules = JSON.parse(capsulesJson);
-        capsules.capsules.forEach(c => expect(c).to.not.have.string('comp1'));
+        capsules.capsules.forEach((c) => expect(c).to.not.have.string('comp1'));
       });
       it('should write the dists files inside the node-modules of the component', () => {
         const nmComponent = path.join(
           helper.scopes.localPath,
-          'node_modules/@bit',
-          `${helper.scopes.remote}.comp1/dist`
+          'node_modules',
+          `@${helper.scopes.remote}`,
+          'comp1',
+          'dist'
         );
         expect(nmComponent).to.be.a.directory();
         expect(path.join(nmComponent, 'index.js')).to.be.a.file();
@@ -60,39 +56,40 @@ describe('compile extension', function() {
         helper.command.tagAllComponents();
       });
       it('should write dists files inside the capsule as it is needed for release', () => {
-        const capsule = helper.command.getCapsuleOfComponent('comp1');
+        const capsule = helper.command.getCapsuleOfComponent('comp1@0.0.1');
         expect(path.join(capsule, 'dist')).to.be.a.directory();
         expect(path.join(capsule, 'dist/index.js')).to.be.a.file();
+      });
+      it('should delete previous capsules before the tag (this test is not related to compile)', () => {
+        expect(() => helper.command.getCapsuleOfComponent('comp1')).to.throw();
       });
       it('should save the dists in the objects', () => {
         const catComp2 = helper.command.catComponent('comp2@latest');
         expect(catComp2).to.have.property('extensions');
-        const compileExt = catComp2.extensions.find(e => e.name === 'compile');
-        const files = compileExt.artifacts.map(d => d.relativePath);
+        const builderExt = helper.general.getExtension(catComp2, Extensions.builder);
+        expect(builderExt.data).to.have.property('artifacts');
+        const compilerArtifacts = builderExt.data.artifacts.find((a) => a.task.id === Extensions.compiler);
+        const files = compilerArtifacts.files.map((d) => d.relativePath);
         expect(files).to.include('dist/index.js');
         expect(files).to.include('dist/index.d.ts'); // makes sure it saves declaration files
       });
       describe('export and import to another scope', () => {
         before(() => {
-          helper.command.exportAllComponents();
-
+          helper.command.export();
           helper.scopeHelper.reInitLocalScope();
           helper.scopeHelper.addRemoteScope();
-          helper.command.importComponent('comp1');
+          helper.command.importComponent('*');
         });
         it('should not show the component as modified', () => {
           helper.command.expectStatusToBeClean();
         });
         it('should save the artifacts and package.json on node_modules', () => {
-          const artifactsPath = path.join(
-            helper.scopes.localPath,
-            'node_modules/@bit',
-            `${helper.scopes.remote}.comp1`
-          );
+          const artifactsPath = path.join(helper.scopes.localPath, 'node_modules', `@${helper.scopes.remote}`, 'comp1');
           expect(path.join(artifactsPath, 'dist/index.js')).to.be.a.file();
           expect(path.join(artifactsPath, 'package.json')).to.be.a.file();
         });
-        it('should save the artifacts and package.json for NESTED in the component dir, same as legacy', () => {
+        // @todo: @gilad will handle NESTED differently by creating capsules for them
+        it.skip('should save the artifacts and package.json for NESTED in the component dir, same as legacy', () => {
           const nestedPath = path.join(
             helper.scopes.localPath,
             'components/.dependencies/comp2',
@@ -106,12 +103,13 @@ describe('compile extension', function() {
           it('should generate dists also after deleting the dists from the workspace', () => {
             const distPath = path.join(
               helper.scopes.localPath,
-              'node_modules/@bit',
-              `${helper.scopes.remote}.comp1`,
+              'node_modules',
+              `@${helper.scopes.remote}`,
+              'comp1',
               'dist'
             );
             fs.removeSync(distPath);
-            helper.command.runCmd('bit compile');
+            helper.command.compile();
             expect(distPath).to.be.a.directory();
             expect(path.join(distPath, 'index.js')).to.be.a.file();
           });
@@ -124,7 +122,8 @@ describe('compile extension', function() {
         helper.scopeHelper.getClonedLocalScope(scopeBeforeTag);
         helper.fs.outputFile('bar/foo.js');
         helper.command.addComponent('bar');
-        helper.bitJsonc.addToVariant(undefined, 'bar', 'extensions', {});
+        helper.bitJsonc.setVariant(undefined, 'bar', {});
+        helper.bitJsonc.addToVariant('bar', 'propagate', false);
         output = helper.command.tagAllComponents();
       });
       // a guard for Flows bug that exits unexpectedly
@@ -134,10 +133,63 @@ describe('compile extension', function() {
       it('should still save the dists on the component with the compiler', () => {
         const catComp = helper.command.catComponent('comp3@latest');
         expect(catComp).to.have.property('extensions');
-        const compileExt = catComp.extensions.find(e => e.name === 'compile');
-        const files = compileExt.artifacts.map(d => d.relativePath);
+
+        const builderExt = catComp.extensions.find((e) => e.name === Extensions.builder);
+        const compilerArtifacts = builderExt.data.artifacts.find((a) => a.task.id === Extensions.compiler);
+        const files = compilerArtifacts.files.map((d) => d.relativePath);
         expect(files).to.include('dist/index.js');
       });
+    });
+  });
+  describe('component with unsupported compiler files', () => {
+    before(() => {
+      helper.scopeHelper.setNewLocalAndRemoteScopes();
+      helper.extensions.addExtensionToVariant('*', 'teambit.harmony/node', {});
+      helper.fixtures.populateComponentsTS(1);
+      helper.fs.outputFile('comp1/style.css', 'h1{}');
+      helper.fs.outputFile('comp1/types.d.ts', 'export const myField: number');
+      helper.command.runCmd('bit compile');
+    });
+    it('should copy non-supported files to the dists', () => {
+      const nmComponent = path.join(
+        helper.scopes.localPath,
+        'node_modules',
+        `@${helper.scopes.remote}`,
+        'comp1',
+        'dist'
+      );
+      expect(nmComponent).to.be.a.directory();
+      expect(path.join(nmComponent, 'index.js')).to.be.a.file();
+      expect(path.join(nmComponent, 'style.css')).to.be.a.file();
+      expect(path.join(nmComponent, 'types.d.ts')).to.be.a.file();
+
+      const styleContent = fs.readFileSync(path.join(nmComponent, 'style.css'));
+      expect(styleContent.toString()).to.be.equal('h1{}');
+    });
+    describe('tag the components', () => {
+      before(() => {
+        helper.command.tagAllComponents();
+      });
+      it('should copy unsupported files inside the capsule', () => {
+        const capsule = helper.command.getCapsuleOfComponent('comp1@0.0.1');
+        expect(path.join(capsule, 'dist')).to.be.a.directory();
+        expect(path.join(capsule, 'dist/style.css')).to.be.a.file();
+      });
+    });
+  });
+  describe('component with nested directories', () => {
+    before(() => {
+      helper.scopeHelper.setNewLocalAndRemoteScopes({ addRemoteScopeAsDefaultScope: false });
+      helper.fixtures.populateComponentsTS(1);
+      helper.fs.outputFile('comp1/nested/foo.ts');
+      helper.command.compile();
+    });
+    it('the sourceMap should include the path to the nested dir properly', () => {
+      // before, the "sources" was just ["foo.ts"] without the "nested" dir
+      // it has been fixed once the typescript compiler programmatically added "rootDir": "."
+      const sourceMapPath = 'node_modules/@my-scope/comp1/dist/nested/foo.js.map';
+      const sourceMapPathContent = helper.fs.readJsonFile(sourceMapPath);
+      expect(sourceMapPathContent.sources).to.deep.equal(['nested/foo.ts']);
     });
   });
 });

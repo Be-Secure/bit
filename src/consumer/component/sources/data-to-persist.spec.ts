@@ -1,8 +1,10 @@
-import * as path from 'path';
 import { expect } from 'chai';
+import * as path from 'path';
+
 import DataToPersist from './data-to-persist';
 
-describe('DataToPersist', function() {
+describe('DataToPersist', function () {
+  // @ts-ignore
   this.timeout(0);
   describe('addFile', () => {
     describe('dir/file collision', () => {

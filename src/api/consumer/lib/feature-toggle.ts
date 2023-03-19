@@ -12,8 +12,8 @@
  * per command. see the docs of CommandHelper class for more info.
  */
 
-import { getSync } from './global-config';
 import { CFG_FEATURE_TOGGLE } from '../../../constants';
+import { getSync } from './global-config';
 
 export const ENV_VAR_FEATURE_TOGGLE = 'BIT_FEATURES';
 
@@ -25,7 +25,7 @@ class FeatureToggle {
   private setFeatures() {
     if (this.areFeaturesPopulated()) return;
     const enabledFeatures = process.env[ENV_VAR_FEATURE_TOGGLE] || getSync(CFG_FEATURE_TOGGLE);
-    this.features = enabledFeatures ? enabledFeatures.split(',').map(f => f.trim()) : null;
+    this.features = enabledFeatures ? enabledFeatures.split(',').map((f) => f.trim()) : null;
   }
   public isFeatureEnabled(featureName: string): boolean {
     this.setFeatures();
@@ -50,4 +50,8 @@ export function addFeature(featureName: string) {
 
 export const LEGACY_SHARED_DIR_FEATURE = 'legacy-shared-dir';
 
-export const HARMONY_FEATURE = 'harmony';
+export const NO_FS_CACHE_FEATURE = 'no-fs-cache';
+
+export const BUILD_ON_CI = 'build-on-ci';
+
+export const EXPORT_CENTRAL = 'export-central';

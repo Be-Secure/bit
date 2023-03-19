@@ -1,43 +1,48 @@
-import { BitId } from '../../bit-id';
-import ModelComponent from '../models/model-component';
-import logger from '../../logger/logger';
+import { BitError } from '@teambit/bit-error';
 import { Scope } from '..';
-import GeneralError from '../../error/general-error';
+import { BitId } from '../../bit-id';
+import { Consumer } from '../../consumer';
 import ComponentsList from '../../consumer/component/components-list';
+import GeneralError from '../../error/general-error';
+import logger from '../../logger/logger';
+import { Lane } from '../models';
+import ModelComponent from '../models/model-component';
 
-export type untagResult = { id: BitId; versions: string[]; component: ModelComponent };
+export type untagResult = { id: BitId; versions: string[]; component?: ModelComponent };
 
 /**
- * If not specified version, remove all local versions.
+ * If head is false, remove all local versions.
  */
 export async function removeLocalVersion(
   scope: Scope,
   id: BitId,
-  version?: string,
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  force? = false
+  lane: Lane | null,
+  head?: boolean,
+  force = false
 ): Promise<untagResult> {
   const component: ModelComponent = await scope.getModelComponentIgnoreScope(id);
-  const localVersions = component.getLocalVersions();
   const idStr = id.toString();
+  const localVersions = await component.getLocalHashes(scope.objects);
   if (!localVersions.length) throw new GeneralError(`unable to untag ${idStr}, the component is not staged`);
-  if (version && !component.hasVersion(version)) {
-    throw new GeneralError(`unable to untag ${idStr}, the version ${version} does not exist`);
+  const headRef = component.getHeadRegardlessOfLane();
+  if (!headRef) {
+    throw new Error(`unable to reset ${idStr}, it has not head`);
   }
-  if (version && !localVersions.includes(version)) {
-    throw new GeneralError(`unable to untag ${idStr}, the version ${version} was exported already`);
+  if (head && !localVersions.find((v) => v.isEqual(headRef))) {
+    throw new Error(`unable to reset ${idStr}, the head ${headRef.toString()} is exported`);
   }
-  const versionsToRemove = version ? [version] : localVersions;
+  const versionsToRemove = head ? [headRef] : localVersions;
+  const versionsToRemoveStr = component.switchHashesWithTagsIfExist(versionsToRemove);
 
   if (!force) {
     const dependencyGraph = await scope.getDependencyGraph();
 
-    versionsToRemove.forEach(versionToRemove => {
+    versionsToRemoveStr.forEach((versionToRemove) => {
       const idWithVersion = component.toBitId().changeVersion(versionToRemove);
       const dependents = dependencyGraph.getImmediateDependentsPerId(idWithVersion);
       if (dependents.length) {
-        throw new GeneralError(
-          `unable to untag ${idStr}, the version ${versionToRemove} has the following dependent(s) ${dependents.join(
+        throw new BitError(
+          `unable to reset ${idStr}, the version ${versionToRemove} has the following dependent(s) ${dependents.join(
             ', '
           )}`
         );
@@ -45,75 +50,67 @@ export async function removeLocalVersion(
     });
   }
 
-  scope.sources.removeComponentVersions(component, versionsToRemove);
+  await scope.sources.removeComponentVersions(component, versionsToRemove, versionsToRemoveStr, lane, head);
 
-  return { id, versions: versionsToRemove, component };
+  return { id, versions: versionsToRemoveStr, component };
 }
 
 export async function removeLocalVersionsForAllComponents(
-  scope: Scope,
-  version?: string,
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  force? = false
+  consumer: Consumer,
+  lane: Lane | null,
+  head?: boolean
 ): Promise<untagResult[]> {
-  const componentsToUntag = await getComponentsWithOptionToUntag(scope, version);
-  return removeLocalVersionsForMultipleComponents(componentsToUntag, version, force, scope);
+  const componentsToUntag = await getComponentsWithOptionToUntag(consumer);
+  const force = true; // when removing local versions from all components, no need to check if the component is used as a dependency
+  return removeLocalVersionsForMultipleComponents(componentsToUntag, lane, head, force, consumer.scope);
 }
 
-export async function removeLocalVersionsForComponentsMatchedByWildcard(
-  scope: Scope,
-  version?: string,
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  force? = false,
-  idWithWildcard?: string
-): Promise<untagResult[]> {
-  const candidateComponents = await getComponentsWithOptionToUntag(scope, version);
-  const componentsToUntag = idWithWildcard
-    ? ComponentsList.filterComponentsByWildcard(candidateComponents, idWithWildcard)
-    : candidateComponents;
-  return removeLocalVersionsForMultipleComponents(componentsToUntag, version, force, scope);
-}
-
-async function removeLocalVersionsForMultipleComponents(
+export async function removeLocalVersionsForMultipleComponents(
   componentsToUntag: ModelComponent[],
-  version?: string,
+  lane: Lane | null,
+  head?: boolean,
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   force: boolean,
   scope: Scope
 ) {
   if (!componentsToUntag.length) {
-    const versionOutput = version ? `${version} ` : '';
-    throw new GeneralError(`no components found with version ${versionOutput}to untag on your workspace`);
+    throw new GeneralError(`no components found to reset on your workspace`);
   }
-  // if no version is given, there is risk of deleting dependencies version without their dependents.
-  if (!force && version) {
+  // if only head is removed, there is risk of deleting dependencies version without their dependents.
+  if (!force && head) {
     const dependencyGraph = await scope.getDependencyGraph();
-    const candidateComponentsIds = componentsToUntag.map(component => {
+    const candidateComponentsIds = componentsToUntag.map((component) => {
       const bitId = component.toBitId();
-      return bitId.changeVersion(version);
+      const headRef = component.getHeadRegardlessOfLane();
+      if (!headRef)
+        throw new Error(`component ${bitId.toString()} does not have head. it should not be a candidate for reset`);
+
+      return bitId.changeVersion(component.getTagOfRefIfExists(headRef) || headRef.toString());
     });
-    const candidateComponentsIdsStr = candidateComponentsIds.map(id => id.toString());
+    const candidateComponentsIdsStr = candidateComponentsIds.map((id) => id.toString());
     candidateComponentsIds.forEach((bitId: BitId) => {
       const dependents = dependencyGraph.getImmediateDependentsPerId(bitId);
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      const dependentsNotCandidates = dependents.filter(dependent => !candidateComponentsIdsStr.includes(dependent));
+      const dependentsNotCandidates = dependents.filter((dependent) => !candidateComponentsIdsStr.includes(dependent));
       if (dependentsNotCandidates.length) {
         throw new GeneralError( // $FlowFixMe
-          `unable to untag ${bitId}, the version ${version} has the following dependent(s) ${dependents.join(', ')}`
+          `unable to untag ${bitId}, the version ${bitId.version} has the following dependent(s) ${dependents.join(
+            ', '
+          )}`
         );
       }
     });
   }
   logger.debug(`found ${componentsToUntag.length} components to untag`);
-  return Promise.all(componentsToUntag.map(component => removeLocalVersion(scope, component.toBitId(), version, true)));
+  return Promise.all(
+    componentsToUntag.map((component) => removeLocalVersion(scope, component.toBitId(), lane, head, force))
+  );
 }
 
-async function getComponentsWithOptionToUntag(scope, version): Promise<ModelComponent[]> {
-  const components: ModelComponent[] = await scope.list();
-  const candidateComponents = components.filter((component: ModelComponent) => {
-    const localVersions = component.getLocalVersions();
-    if (!localVersions.length) return false;
-    return version ? localVersions.includes(version) : true;
-  });
-  return candidateComponents;
+export async function getComponentsWithOptionToUntag(consumer: Consumer): Promise<ModelComponent[]> {
+  const componentList = new ComponentsList(consumer);
+  const laneObj = await consumer.getCurrentLaneObject();
+  const components: ModelComponent[] = await componentList.listExportPendingComponents(laneObj);
+
+  return components;
 }

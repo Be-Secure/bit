@@ -1,15 +1,20 @@
 import fs from 'fs-extra';
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 import pathlib from 'path';
-import { writeFile, cleanObject } from '../utils';
-import { Remote } from '../remotes';
-import { SCOPE_JSON } from '../constants';
+import { DEFAULT_LANE } from '@teambit/lane-id';
 import BitId from '../bit-id/bit-id';
+import { SCOPE_JSON, SCOPE_JSONC } from '../constants';
 import GeneralError from '../error/general-error';
+import { Remote } from '../remotes';
+import { cleanObject, writeFile } from '../utils';
 import { ScopeJsonNotFound } from './exceptions';
 
 export function getPath(scopePath: string): string {
   return pathlib.join(scopePath, SCOPE_JSON);
+}
+
+export function getHarmonyPath(scopePath: string): string {
+  return pathlib.join(scopePath, SCOPE_JSONC);
 }
 
 export type ScopeJsonProps = {
@@ -20,7 +25,10 @@ export type ScopeJsonProps = {
   license?: string;
   groupName: string | null | undefined;
   remotes?: { name: string; url: string };
+  lanes?: { current: string; tracking: TrackLane[]; new: string[] };
 };
+
+export type TrackLane = { localLane: string; remoteLane: string; remoteScope: string };
 
 export class ScopeJson {
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -31,8 +39,10 @@ export class ScopeJson {
   license: string | null | undefined;
   remotes: { [key: string]: string };
   groupName: string;
+  lanes: { tracking: TrackLane[]; new: string[] };
+  hasChanged = false;
 
-  constructor({ name, remotes, resolverPath, hooksPath, license, groupName, version }: ScopeJsonProps) {
+  constructor({ name, remotes, resolverPath, hooksPath, license, groupName, version, lanes }: ScopeJsonProps) {
     this.name = name;
     this.version = version;
     this.resolverPath = resolverPath;
@@ -40,6 +50,7 @@ export class ScopeJson {
     this.license = license;
     this.remotes = remotes || {};
     this.groupName = groupName || '';
+    this.lanes = lanes || { current: DEFAULT_LANE, tracking: [], new: [] };
   }
 
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -53,6 +64,7 @@ export class ScopeJson {
   get name(): string {
     return this._name;
   }
+
   toPlainObject() {
     return cleanObject({
       name: this.name,
@@ -60,7 +72,8 @@ export class ScopeJson {
       resolverPath: this.resolverPath,
       license: this.license,
       groupName: this.groupName,
-      version: this.version
+      version: this.version,
+      lanes: this.lanes,
     });
   }
 
@@ -103,24 +116,67 @@ export class ScopeJson {
     return writeFile(pathlib.join(path, SCOPE_JSON), this.toJson());
   }
 
-  static loadFromJson(json: string): ScopeJson {
-    return new ScopeJson(JSON.parse(json));
+  trackLane(trackLaneData: TrackLane) {
+    const existing = this.getTrackLane(trackLaneData.localLane);
+    if (existing) {
+      existing.remoteLane = trackLaneData.remoteLane;
+      existing.remoteScope = trackLaneData.remoteScope;
+    } else {
+      this.lanes.tracking.push(trackLaneData);
+    }
+
+    this.hasChanged = true;
+  }
+  removeTrackLane(localLane: string) {
+    const index = this.lanes.tracking.findIndex((t) => t.localLane === localLane);
+    if (index === -1) return;
+    this.lanes.tracking.splice(index, 1);
+    this.hasChanged = true;
+  }
+  private getTrackLane(localLane: string): TrackLane | undefined {
+    return this.lanes.tracking.find((t) => t.localLane === localLane);
+  }
+  setLaneAsNew(laneName: string) {
+    if (!this.lanes.new) this.lanes.new = [];
+    this.lanes.new.push(laneName);
+    this.hasChanged = true;
+  }
+  removeLaneFromNew(laneName: string) {
+    if (!this.lanes.new || !this.lanes.new.length) return;
+    this.lanes.new = this.lanes.new.filter((l) => l !== laneName);
+    this.hasChanged = true;
+  }
+  async writeIfChanged(path: string) {
+    if (this.hasChanged) {
+      await this.write(path);
+    }
+  }
+
+  static loadFromJson(json: string, scopeJsonPath: string): ScopeJson {
+    let jsonParsed: ScopeJsonProps;
+    try {
+      jsonParsed = JSON.parse(json);
+    } catch (err) {
+      throw new GeneralError(`unable to parse the scope.json file located at "${scopeJsonPath}".
+edit the file to fix the error, or delete it and run "bit init" to recreate it`);
+    }
+    return new ScopeJson(jsonParsed);
   }
 
   static async loadFromFile(scopeJsonPath: string): Promise<ScopeJson> {
     let rawScopeJson;
     try {
       rawScopeJson = await fs.readFile(scopeJsonPath);
-    } catch (err) {
+    } catch (err: any) {
       if (err.code === 'ENOENT') throw new ScopeJsonNotFound(scopeJsonPath);
       throw err;
     }
-    return ScopeJson.loadFromJson(rawScopeJson.toString());
+    return ScopeJson.loadFromJson(rawScopeJson.toString(), scopeJsonPath);
   }
 
   getPopulatedLicense(): Promise<string | null | undefined> {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     if (!this.get('license') || !fs.existsSync(this.get('license'))) return Promise.resolve();
-    return fs.readFile(this.get('license')).then(license => license.toString());
+    return fs.readFile(this.get('license')).then((license) => license.toString());
   }
 }

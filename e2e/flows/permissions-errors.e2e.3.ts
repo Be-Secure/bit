@@ -1,16 +1,16 @@
 import { expect } from 'chai';
+
 import Helper from '../../src/e2e-helper/e2e-helper';
 
 /**
  * skipping the permissions tests as it won't be easy to have the CIs testing 'sudo' commands.
  * it does work locally though and is recommended to run it whenever this functionality is touched
  */
-describe.skip('permissions', function() {
+describe.skip('permissions', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures('legacy-workspace-config');
   });
   after(() => {
     helper.scopeHelper.destroy();
@@ -19,7 +19,7 @@ describe.skip('permissions', function() {
     before(() => {
       helper.scopeHelper.reInitLocalScope();
       helper.fixtures.createComponentBarFoo();
-      const output = helper.command.runCmd('sudo bit add bar/foo.js');
+      const output = helper.command.runCmd('sudo bit add bar');
       expect(output).to.have.string('Warning');
       expect(output).to.have.string('root');
     });

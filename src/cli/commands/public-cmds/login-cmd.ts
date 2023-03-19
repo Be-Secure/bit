@@ -1,33 +1,39 @@
 import chalk from 'chalk';
-import { LegacyCommand, CommandOptions } from '../../legacy-command';
+
 import { login } from '../../../api/consumer';
-import { BASE_WEB_DOMAIN } from '../../../constants';
+import { getCloudDomain } from '../../../constants';
+import { Group } from '../../command-groups';
+import { CommandOptions, LegacyCommand } from '../../legacy-command';
 
 export default class Login implements LegacyCommand {
   name = 'login';
-  description = 'log the CLI into Bit';
+  description = 'log in to Bit cloud';
+  group: Group = 'general';
   alias = '';
   skipWorkspace = true;
   opts = [
+    ['d', 'hub-domain-login <url>', 'hub domain login url (default https://bit.cloud)'],
     ['p', 'port <port>', 'port number to open for localhost server (default 8085)'],
     ['', 'suppress-browser-launch', 'do not open a browser for authentication'],
-    ['', 'npmrc-path <path>', `path to npmrc file to configure ${BASE_WEB_DOMAIN} registry`],
-    ['', 'skip-registry-config [boolean]', `don't configure ${BASE_WEB_DOMAIN} registry`],
+    ['', 'npmrc-path <path>', `path to npmrc file to configure ${getCloudDomain()} registry`],
+    ['', 'skip-registry-config', `don't configure ${getCloudDomain()} registry`],
     [
       '',
-      'machine-name <string>',
-      'specify machine-name to pair with the token (useful for CI to avoid accidentally revoke the token)'
-    ]
+      'machine-name <name>',
+      'specify machine-name to pair with the token (useful for CI to avoid accidentally revoke the token)',
+    ],
   ] as CommandOptions;
   action(
     [], // eslint-disable-line no-empty-pattern
     {
+      hubDomainLogin,
       port,
       suppressBrowserLaunch = false,
       npmrcPath,
       skipRegistryConfig = false,
-      machineName
+      machineName,
     }: {
+      hubDomainLogin?: string;
       port: string;
       suppressBrowserLaunch?: boolean;
       npmrcPath: string;
@@ -35,17 +41,19 @@ export default class Login implements LegacyCommand {
       machineName?: string;
     }
   ): Promise<any> {
-    return login(port, suppressBrowserLaunch, npmrcPath, skipRegistryConfig, machineName).then(results => ({
-      ...results,
-      skipRegistryConfig
-    }));
+    return login(port, suppressBrowserLaunch, npmrcPath, skipRegistryConfig, machineName, hubDomainLogin).then(
+      (results) => ({
+        ...results,
+        skipRegistryConfig,
+      })
+    );
   }
   report({
     isAlreadyLoggedIn = false,
     username,
     npmrcPath,
     skipRegistryConfig,
-    writeToNpmrcError
+    writeToNpmrcError,
   }: {
     isAlreadyLoggedIn: boolean;
     username: string;

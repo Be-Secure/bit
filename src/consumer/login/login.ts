@@ -1,22 +1,23 @@
+import chalk from 'chalk';
 import http from 'http';
-import uuid from 'uuid';
 import open from 'open';
 import os from 'os';
-import chalk from 'chalk';
 import url from 'url';
-import { setSync, getSync } from '../../api/consumer/lib/global-config';
+import { v4 } from 'uuid';
+
+import { getSync, setSync } from '../../api/consumer/lib/global-config';
 import {
+  CFG_HUB_LOGIN_KEY,
+  CFG_REGISTRY_URL_KEY,
   CFG_USER_TOKEN_KEY,
   DEFAULT_HUB_LOGIN,
-  CFG_HUB_LOGIN_KEY,
   DEFAULT_REGISTRY_URL,
-  CFG_REGISTRY_URL_KEY,
-  PREVIOUSLY_DEFAULT_REGISTRY_URL
+  PREVIOUSLY_DEFAULT_REGISTRY_URL,
 } from '../../constants';
-import { LoginFailed } from '../exceptions';
-import logger from '../../logger/logger';
 import GeneralError from '../../error/general-error';
+import logger from '../../logger/logger';
 import { npmLogin } from '../../registry';
+import { LoginFailed } from '../exceptions';
 
 const ERROR_RESPONSE = 500;
 const DEFAULT_PORT = 8085;
@@ -27,7 +28,8 @@ export default function loginToBitSrc(
   suppressBrowserLaunch: boolean,
   npmrcPath: string,
   skipRegistryConfig: boolean,
-  machineName: string | null | undefined
+  machineName: string | null | undefined,
+  hubDomainLogin?: string
 ): Promise<{
   isAlreadyLoggedIn?: boolean;
   username?: string;
@@ -35,10 +37,10 @@ export default function loginToBitSrc(
 }> {
   let actualNpmrcPath = npmrcPath;
   return new Promise((resolve, reject) => {
-    const clientGeneratedId = uuid();
+    const clientGeneratedId = v4();
     if (getSync(CFG_USER_TOKEN_KEY)) {
       return resolve({
-        isAlreadyLoggedIn: true
+        isAlreadyLoggedIn: true,
       });
     }
     const server = http.createServer((request, response) => {
@@ -82,23 +84,23 @@ export default function loginToBitSrc(
             }
             // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
             actualNpmrcPath = npmLogin(token, npmrcPath, configuredRegistry || DEFAULT_REGISTRY_URL);
-          } catch (e) {
+          } catch (e: any) {
             actualNpmrcPath = e.path;
             writeToNpmrcError = true;
           }
         }
 
         response.writeHead(REDIRECT, {
-          Location: redirectUri
+          Location: redirectUri,
         });
         closeConnection();
         resolve({
           username,
           npmrcPath: actualNpmrcPath,
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-          writeToNpmrcError
+          writeToNpmrcError,
         });
-      } catch (err) {
+      } catch (err: any) {
         logger.error(`err on login: ${err}`);
         closeConnection(ERROR_RESPONSE);
         reject(new LoginFailed());
@@ -114,19 +116,22 @@ export default function loginToBitSrc(
       }
 
       const encoded = encodeURI(
-        `${getSync(CFG_HUB_LOGIN_KEY) || DEFAULT_HUB_LOGIN}?port=${port ||
-          DEFAULT_PORT}&clientId=${clientGeneratedId}&responseType=token&deviceName=${machineName ||
-          os.hostname()}&os=${process.platform}`
+        `${hubDomainLogin || getSync(CFG_HUB_LOGIN_KEY) || DEFAULT_HUB_LOGIN}?port=${
+          port || DEFAULT_PORT
+        }&clientId=${clientGeneratedId}&responseType=token&deviceName=${machineName || os.hostname()}&os=${
+          process.platform
+        }`
       );
       if (!suppressBrowserLaunch) {
         console.log(chalk.yellow(`Your browser has been opened to visit:\n${encoded}`)); // eslint-disable-line no-console
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
         open(encoded, { url: true });
       } else {
         console.log(chalk.yellow(`Go to the following link in your browser::\n${encoded}`)); // eslint-disable-line no-console
       }
     });
 
-    server.on('error', e => {
+    server.on('error', (e) => {
       // @ts-ignore
       if (e.code === 'EADDRINUSE') {
         // @ts-ignore

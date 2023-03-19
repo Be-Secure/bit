@@ -1,5 +1,6 @@
-import path from 'path';
 import { expect } from 'chai';
+import path from 'path';
+
 import * as buildTree from './build-tree';
 
 const fixtures = `${__dirname}/../../../../../fixtures`;
@@ -11,12 +12,12 @@ describe('buildTree', () => {
     const filePaths: string[] = [];
     let visited: any;
     const dependencyTreeParams = {
-      baseDir: '.',
+      componentDir: '.',
       workspacePath: __dirname,
       filePaths,
       bindingPrefix: '@bit',
       visited,
-      resolveModulesConfig: undefined
+      resolveModulesConfig: undefined,
     };
     it('when no files are passed should return an empty tree', async () => {
       const results = await buildTree.getDependencyTree(dependencyTreeParams);
@@ -25,7 +26,7 @@ describe('buildTree', () => {
     it('when unsupported files are passed should return them with no dependencies', async () => {
       dependencyTreeParams.filePaths = [`${fixtures}/unsupported-file.pdf`];
       const results = await buildTree.getDependencyTree(dependencyTreeParams);
-      expect(results.tree).to.deep.equal({ 'fixtures/unsupported-file.pdf': {} });
+      expect(results.tree['fixtures/unsupported-file.pdf'].isEmpty()).to.be.true;
     });
     it('when supported and unsupported files are passed should return them all', async () => {
       dependencyTreeParams.filePaths = [`${fixtures}/unsupported-file.pdf`, `${precinctFixtures}/es6.js`];
@@ -76,8 +77,8 @@ describe('buildTree', () => {
         expect(results.tree).to.have.property('fixtures/build-tree/unparsed.js');
       });
       it('should not add the error to the files without parsing error', () => {
-        expect(results.tree['fixtures/build-tree/a.js']).to.not.have.property('error');
-        expect(results.tree['fixtures/build-tree/b.js']).to.not.have.property('error');
+        expect(results.tree['fixtures/build-tree/a.js'].error).to.be.undefined;
+        expect(results.tree['fixtures/build-tree/b.js'].error).to.be.undefined;
       });
       it('should add the parsing error to the un-parsed file', () => {
         expect(results.tree['fixtures/build-tree/unparsed.js']).to.have.property('error');
@@ -122,9 +123,7 @@ describe('buildTree', () => {
         });
         it('should not recognize the cycle dependencies as link files', () => {
           const file = 'fixtures/build-tree/tree-shaking-cycle/foo.js';
-          expect(results.tree[file].files)
-            .to.be.an('array')
-            .and.have.lengthOf(1);
+          expect(results.tree[file].files).to.be.an('array').and.have.lengthOf(1);
           const indexDep = results.tree[file].files[0];
           expect(indexDep.file).to.equal('fixtures/build-tree/tree-shaking-cycle/index.js');
           expect(indexDep).to.not.have.property('isLink');
@@ -140,9 +139,7 @@ describe('buildTree', () => {
       });
       it('should not mark fileB as a link file', () => {
         const fileA = 'fixtures/build-tree/not-link-file/file-a.js';
-        expect(results.tree[fileA].files)
-          .to.be.an('array')
-          .with.lengthOf(1);
+        expect(results.tree[fileA].files).to.be.an('array').with.lengthOf(1);
         const fileBDep = results.tree[fileA].files[0];
         expect(fileBDep).to.not.have.property('isLink');
       });

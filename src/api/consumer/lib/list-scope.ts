@@ -1,23 +1,23 @@
 import R from 'ramda';
-import { loadConsumerIfExist, Consumer } from '../../../consumer';
+
+import { BitId } from '../../../bit-id';
 import loader from '../../../cli/loader';
-import { BEFORE_REMOTE_LIST, BEFORE_LOCAL_LIST } from '../../../cli/loader/loader-messages';
-import Remote from '../../../remotes/remote';
-import ComponentsList from '../../../consumer/component/components-list';
-import { ListScopeResult } from '../../../consumer/component/components-list';
+import { BEFORE_LOCAL_LIST, BEFORE_REMOTE_LIST } from '../../../cli/loader/loader-messages';
+import { Consumer, loadConsumerIfExist } from '../../../consumer';
+import ComponentsList, { ListScopeResult } from '../../../consumer/component/components-list';
 import { ConsumerNotFound } from '../../../consumer/exceptions';
 import GeneralError from '../../../error/general-error';
-import { BitId } from '../../../bit-id';
-import NoIdMatchWildcard from './exceptions/no-id-match-wildcard';
-import { SSHConnectionStrategyName } from '../../../scope/network/ssh/ssh';
 import getRemoteByName from '../../../remotes/get-remote-by-name';
+import Remote from '../../../remotes/remote';
+import { SSHConnectionStrategyName } from '../../../scope/network/ssh/ssh';
+import NoIdMatchWildcard from './exceptions/no-id-match-wildcard';
 
 export async function listScope({
   scopeName,
-  showAll, // include nested
-  showRemoteVersion,
+  showAll = false, // include nested
+  showRemoteVersion = false,
   namespacesUsingWildcards,
-  strategiesNames
+  strategiesNames,
 }: {
   scopeName?: string;
   showAll?: boolean;
@@ -29,7 +29,7 @@ export async function listScope({
   if (scopeName) {
     return remoteList();
   }
-  return scopeList();
+  return localList();
 
   async function remoteList(): Promise<ListScopeResult[]> {
     const remote: Remote = await getRemoteByName(scopeName as string, consumer);
@@ -37,14 +37,13 @@ export async function listScope({
     return remote.list(namespacesUsingWildcards, strategiesNames);
   }
 
-  async function scopeList(): Promise<ListScopeResult[]> {
+  async function localList(): Promise<ListScopeResult[]> {
     if (!consumer) {
       throw new ConsumerNotFound();
     }
     loader.start(BEFORE_LOCAL_LIST);
     const componentsList = new ComponentsList(consumer);
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return componentsList.listScope(showRemoteVersion, showAll, namespacesUsingWildcards);
+    return componentsList.listAll(showRemoteVersion, showAll, namespacesUsingWildcards);
   }
 }
 
@@ -61,5 +60,5 @@ export async function getRemoteBitIdsByWildcards(idStr: string): Promise<BitId[]
   if (!listResult.length) {
     throw new NoIdMatchWildcard([idStr]);
   }
-  return listResult.map(result => result.id);
+  return listResult.map((result) => result.id);
 }

@@ -1,17 +1,19 @@
-import Table from 'tty-table';
-import { LegacyCommand, CommandOptions } from '../../legacy-command';
+import Table from 'cli-table';
+
 import { catScope } from '../../../api/scope';
 import ModelComponent from '../../../scope/models/model-component';
+import { CommandOptions, LegacyCommand } from '../../legacy-command';
 
 export default class CatScope implements LegacyCommand {
   name = 'cat-scope [scopePath]';
   description = 'cat a scope and show all the contents';
   private = true;
+  loader = false;
   alias = '';
   opts = [
-    ['f', 'full', 'show all of the objects in the scope'],
+    ['f', 'full', 'show all of the objects in the scope (except "Source")'],
     ['j', 'json', 'print the objects as a json format'],
-    ['e', 'json-extra', 'add hash and object type to the json']
+    ['e', 'json-extra', 'add hash and object type to the json'],
   ] as CommandOptions;
 
   action(
@@ -19,18 +21,18 @@ export default class CatScope implements LegacyCommand {
     {
       full,
       json,
-      jsonExtra
+      jsonExtra,
     }: { full: boolean | null | undefined; json: boolean | null | undefined; jsonExtra: boolean | null | undefined }
   ): Promise<any> {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return catScope(scopePath || process.cwd(), full).then(payload => ({ payload, full, json, jsonExtra }));
+    return catScope(scopePath || process.cwd(), full).then((payload) => ({ payload, full, json, jsonExtra }));
   }
 
   report({
     payload,
     full,
     json,
-    jsonExtra
+    jsonExtra,
   }: {
     payload: ModelComponent[];
     full: boolean | null | undefined;
@@ -38,7 +40,7 @@ export default class CatScope implements LegacyCommand {
     jsonExtra: boolean | null | undefined;
   }): string {
     if (jsonExtra) {
-      payload.forEach(obj => {
+      payload.forEach((obj) => {
         // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
         obj.hash = obj.hash().toString();
         // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -50,19 +52,13 @@ export default class CatScope implements LegacyCommand {
       return JSON.stringify(payload, null, 2);
     }
     if (!full) {
-      const header = [
-        { value: 'Id', width: 70, headerColor: 'cyan' },
-        { value: 'Object', width: 50, headerColor: 'cyan' }
-      ];
-      const opts = {
-        align: 'left'
-      };
-
-      const table = new Table(header, [], opts);
-      payload.forEach(co => table.push([co.id(), `obj: ${co.hash().toString()}`]));
-      return table.render();
+      const table = new Table({ head: ['id', 'Object', 'Type'], style: { head: ['cyan'] } });
+      payload.forEach((co) => {
+        table.push([co.id(), `obj: ${co.hash().toString()}`, co.getType()]);
+      });
+      return table.toString();
     }
 
-    return payload.map(co => `> ${co.hash().toString()}\n\n${co.id()}\n`).join('\n');
+    return payload.map((co) => `> ${co.hash().toString()}\n\n${co.id()}\n`).join('\n');
   }
 }

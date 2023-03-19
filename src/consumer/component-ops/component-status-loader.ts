@@ -1,14 +1,14 @@
-import BluebirdPromise from 'bluebird';
+import mapSeries from 'p-map-series';
 import { Consumer } from '..';
-import { BitId } from '../../bit-id';
-import { COMPONENT_ORIGINS, LATEST } from '../../constants';
-import { MissingBitMapComponent } from '../bit-map/exceptions';
-import { ModelComponent } from '../../scope/models';
-import MissingFilesFromComponent from '../component/exceptions/missing-files-from-component';
-import ComponentNotFoundInPath from '../component/exceptions/component-not-found-in-path';
-import ComponentOutOfSync from '../exceptions/component-out-of-sync';
-import ComponentsPendingImport from '../component-ops/exceptions/components-pending-import';
+import { BitId, BitIds } from '../../bit-id';
+import { LATEST } from '../../constants';
 import ShowDoctorError from '../../error/show-doctor-error';
+import { ModelComponent } from '../../scope/models';
+import { MissingBitMapComponent } from '../bit-map/exceptions';
+import ComponentsPendingImport from '../component-ops/exceptions/components-pending-import';
+import ComponentNotFoundInPath from '../component/exceptions/component-not-found-in-path';
+import MissingFilesFromComponent from '../component/exceptions/missing-files-from-component';
+import ComponentOutOfSync from '../exceptions/component-out-of-sync';
 
 export type ComponentStatus = {
   modified: boolean;
@@ -28,7 +28,7 @@ export class ComponentStatusLoader {
 
   async getManyComponentsStatuses(ids: BitId[]): Promise<ComponentStatusResult[]> {
     const results: ComponentStatusResult[] = [];
-    await BluebirdPromise.mapSeries(ids, async id => {
+    await mapSeries(ids, async (id) => {
       const status = await this.getComponentStatusById(id);
       results.push({ id, status });
     });
@@ -64,8 +64,15 @@ export class ComponentStatusLoader {
       // loadOne to not find model component as it assumes there is no version
       // also, don't leave the id as is, otherwise, it'll cause issues with import --merge, when
       // imported version is bigger than .bitmap, it won't find it and will consider as deleted
-      componentFromFileSystem = await this.consumer.loadComponent(id.changeVersion(LATEST));
-    } catch (err) {
+      const { components, removedComponents } = await this.consumer.loadComponents(
+        new BitIds(id.changeVersion(LATEST))
+      );
+      if (removedComponents.length) {
+        status.deleted = true;
+        return status;
+      }
+      componentFromFileSystem = components[0];
+    } catch (err: any) {
       if (
         err instanceof MissingFilesFromComponent ||
         err instanceof ComponentNotFoundInPath ||
@@ -82,16 +89,14 @@ export class ComponentStatusLoader {
       }
       throw err;
     }
-    if (componentFromFileSystem.componentMap.origin === COMPONENT_ORIGINS.NESTED) {
-      status.nested = true;
-      return status;
-    }
     if (!componentFromModel) {
       status.newlyCreated = true;
       return status;
     }
 
-    status.staged = componentFromModel.isLocallyChanged();
+    const lane = await this.consumer.getCurrentLaneObject();
+    await componentFromModel.setDivergeData(this.consumer.scope.objects);
+    status.staged = await componentFromModel.isLocallyChanged(this.consumer.scope.objects, lane);
     const versionFromFs = componentFromFileSystem.id.version;
     const idStr = id.toString();
     if (!componentFromFileSystem.id.hasVersion()) {
@@ -100,7 +105,7 @@ export class ComponentStatusLoader {
     // TODO: instead of doing that like this we should use:
     // const versionFromModel = await componentFromModel.loadVersion(versionFromFs, this.consumer.scope.objects);
     // it looks like it's exactly the same code but it's not working from some reason
-    const versionRef = componentFromModel.versions[versionFromFs];
+    const versionRef = componentFromModel.getRef(versionFromFs);
     if (!versionRef) throw new ShowDoctorError(`version ${versionFromFs} was not found in ${idStr}`);
     const versionFromModel = await this.consumer.scope.getObject(versionRef.hash);
     if (!versionFromModel) {

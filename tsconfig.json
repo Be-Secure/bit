@@ -7,9 +7,9 @@
     "moduleResolution": "node",
     "module": "commonjs",
     "target": "es2015",
+    "skipLibCheck": true,
     "noImplicitAny": false,
     "typeRoots": ["custom-types", "node_modules/@types"],
-    "removeComments": true,
     "preserveConstEnums": true,
     "strictPropertyInitialization": false,
     "esModuleInterop": true,
@@ -19,11 +19,14 @@
   },
   "include": [
     "src",
-    "e2e"
+    "scopes",
+    "e2e",
+    "components",
+    "toolbox"
   ],
   "exclude": [
-    "components",
     "node_modules",
-    "e2e/fixtures"
+    "e2e/fixtures",
+    "scopes/semantics/schema/mock"
   ]
 }

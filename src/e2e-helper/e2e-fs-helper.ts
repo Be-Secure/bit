@@ -1,10 +1,11 @@
+import fs from 'fs-extra';
 import glob from 'glob';
 import * as path from 'path';
-import fs from 'fs-extra';
+
 import * as fixtures from '../../src/fixtures/fixtures';
+import { generateRandomStr } from '../utils';
 import { ensureAndWriteJson } from './e2e-helper';
 import ScopesData from './e2e-scopes';
-import { generateRandomStr } from '../utils';
 
 export default class FsHelper {
   scopes: ScopesData;
@@ -20,7 +21,7 @@ export default class FsHelper {
       params.ignore = 'node_modules/**/*';
     }
 
-    return glob.sync(path.normalize(`**/${ext}`), params).map(x => path.normalize(x));
+    return glob.sync(path.normalize(`**/${ext}`), params).map((x) => path.normalize(x));
   }
   getObjectFiles() {
     return glob.sync(path.normalize('*/*'), { cwd: path.join(this.scopes.localPath, '.bit/objects') });
@@ -33,7 +34,7 @@ export default class FsHelper {
     fs.outputFileSync(filePath, impl);
   }
 
-  createJsonFile(filePathRelativeToLocalScope: string, jsonContent: string) {
+  createJsonFile(filePathRelativeToLocalScope: string, jsonContent: Record<string, any>) {
     const filePath = path.join(this.scopes.localPath, filePathRelativeToLocalScope);
     ensureAndWriteJson(filePath, jsonContent);
   }
@@ -48,12 +49,31 @@ export default class FsHelper {
     return fs.readFileSync(path.join(this.scopes.localPath, filePathRelativeToLocalScope)).toString();
   }
 
-  readJsonFile(filePathRelativeToLocalScope: string): string {
+  readJsonFile(filePathRelativeToLocalScope: string): Record<string, any> {
     return fs.readJsonSync(path.join(this.scopes.localPath, filePathRelativeToLocalScope));
+  }
+
+  exists(filePathRelativeToLocalScope: string): boolean {
+    return fs.existsSync(path.join(this.scopes.localPath, filePathRelativeToLocalScope));
   }
 
   outputFile(filePathRelativeToLocalScope: string, data = ''): void {
     return fs.outputFileSync(path.join(this.scopes.localPath, filePathRelativeToLocalScope), data);
+  }
+
+  appendFile(filePathRelativeToLocalScope: string, data = '\n'): void {
+    return fs.appendFileSync(path.join(this.scopes.localPath, filePathRelativeToLocalScope), data);
+  }
+
+  prependFile(filePathRelativeToLocalScope: string, data = '\n'): void {
+    const filePath = path.join(this.scopes.localPath, filePathRelativeToLocalScope);
+    const content = fs.readFileSync(filePath).toString();
+    return fs.writeFileSync(filePath, `${data}${content}`);
+  }
+
+  writeFile(filePathRelativeToLocalScope: string, content: string): void {
+    const filePath = path.join(this.scopes.localPath, filePathRelativeToLocalScope);
+    return fs.writeFileSync(filePath, content);
   }
 
   moveSync(srcPathRelativeToLocalScope: string, destPathRelativeToLocalScope: string) {
@@ -65,13 +85,24 @@ export default class FsHelper {
   /**
    * adds "\n" at the beginning of the file to make it modified.
    */
-  modifyFile(filePath: string) {
-    const content = fs.readFileSync(filePath);
-    fs.outputFileSync(filePath, `\n${content}`);
+  modifyFile(filePath: string, basePath = this.scopes.localPath) {
+    const absPath = basePath ? path.join(basePath, filePath) : filePath;
+    const content = fs.readFileSync(absPath);
+    fs.outputFileSync(absPath, `\n${content}`);
   }
 
   deletePath(relativePathToLocalScope: string) {
     return fs.removeSync(path.join(this.scopes.localPath, relativePathToLocalScope));
+  }
+
+  deleteObject(objectPath: string) {
+    // general-helper can be helpful with getting the path
+    return fs.removeSync(path.join(this.scopes.localPath, '.bit/objects', objectPath));
+  }
+
+  deleteRemoteObject(objectPath: string) {
+    // general-helper can be helpful with getting the path
+    return fs.removeSync(path.join(this.scopes.remotePath, 'objects', objectPath));
   }
 
   createNewDirectory() {
@@ -91,7 +122,7 @@ export default class FsHelper {
     fs.removeSync(dirPath);
   }
   cleanExternalDirs() {
-    this.externalDirsArray.forEach(dirPath => {
+    this.externalDirsArray.forEach((dirPath) => {
       this.cleanDir(dirPath);
     });
   }

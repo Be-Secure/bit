@@ -3,7 +3,9 @@
 
 import os from 'os';
 import path from 'path';
+
 import dependencyTree from './dependency-tree';
+import { PathLinuxRelative } from '../../../../utils/path';
 
 /**
  * Check if running on Windows.
@@ -41,10 +43,10 @@ function sort(tree) {
  * @return {Object}
  */
 function exclude(tree, excludeRegExp) {
-  const regExpList = excludeRegExp.map(re => new RegExp(re));
+  const regExpList = excludeRegExp.map((re) => new RegExp(re));
 
   function regExpFilter(id) {
-    return regExpList.findIndex(regexp => regexp.test(id)) < 0;
+    return regExpList.findIndex((regexp) => regexp.test(id)) < 0;
   }
 
   return Object.keys(tree)
@@ -89,12 +91,26 @@ export function processPath(absPath, cache, baseDir) {
  */
 function convertTreePaths(depTree, pathCache, baseDir) {
   const tree = {};
-  Object.keys(depTree).forEach(file => {
-    tree[processPath(file, pathCache, baseDir)] = depTree[file].map(d => processPath(d, pathCache, baseDir));
+  Object.keys(depTree).forEach((file) => {
+    tree[processPath(file, pathCache, baseDir)] = depTree[file].map((d) => processPath(d, pathCache, baseDir));
   });
 
   return tree;
 }
+
+// e.g. { 'index.ts': ['foo.ts', '../node_modules/react/index.js'] }
+// all paths are normalized to Linux
+export type MadgeTree = { [relativePath: string]: PathLinuxRelative[] };
+
+// e.g. { '/tmp/workspace': ['lodash', 'ramda'] };
+export type Missing = { [absolutePath: string]: string[] };
+
+type GenerateTreeResults = {
+  madgeTree: MadgeTree;
+  skipped: Missing;
+  pathMap: any;
+  errors: { [filePath: string]: Error };
+};
 
 /**
  * Generate the tree from the given files
@@ -102,7 +118,7 @@ function convertTreePaths(depTree, pathCache, baseDir) {
  * @param config
  * @return {Object}
  */
-export default function generateTree(files = [], config) {
+export default function generateTree(files: string[] = [], config): GenerateTreeResults {
   const depTree = {};
   const nonExistent = {};
   const npmPaths = {};
@@ -110,7 +126,7 @@ export default function generateTree(files = [], config) {
   const pathMap = [];
   const errors = {};
 
-  files.forEach(file => {
+  files.forEach((file) => {
     if (depTree[file]) {
       return;
     }
@@ -142,11 +158,10 @@ export default function generateTree(files = [], config) {
         detective,
         nonExistent,
         pathMap,
-        cacheProjectAst: config.cacheProjectAst
+        cacheProjectAst: config.cacheProjectAst,
       });
       Object.assign(depTree, dependencyTreeResult);
-    } catch (err) {
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+    } catch (err: any) {
       errors[file] = err;
     }
   });
@@ -154,7 +169,7 @@ export default function generateTree(files = [], config) {
   let tree = convertTreePaths(depTree, pathCache, config.baseDir);
 
   // rename errors keys from absolute paths to relative paths
-  Object.keys(errors).forEach(file => {
+  Object.keys(errors).forEach((file) => {
     const relativeFile = processPath(file, pathCache, config.baseDir);
     if (relativeFile !== file) {
       errors[relativeFile] = errors[file];
@@ -162,11 +177,11 @@ export default function generateTree(files = [], config) {
     }
   });
 
-  Object.keys(npmPaths).forEach(npmKey => {
+  Object.keys(npmPaths).forEach((npmKey) => {
     const id = processPath(npmKey, pathCache, config.baseDir);
     // a file might not be in the tree if it has errors or errors found with its parents
     if (!tree[id]) return;
-    npmPaths[npmKey].forEach(npmPath => {
+    npmPaths[npmKey].forEach((npmPath) => {
       tree[id].push(processPath(npmPath, pathCache, config.baseDir));
     });
   });
@@ -179,6 +194,6 @@ export default function generateTree(files = [], config) {
     madgeTree: sort(tree),
     skipped: nonExistent,
     pathMap,
-    errors
+    errors,
   };
 }

@@ -11,7 +11,7 @@ const token = {
   CODE: 'CODE',
   DESC_DELIMITER: 'DESC_DELIMITER',
   RETURNS_DELIMITER: 'RETURNS_DELIMITER',
-  COMMENT: 'COMMENT'
+  COMMENT: 'COMMENT',
 };
 
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -21,7 +21,7 @@ const status = {
   IN_CODE: 'IN_CODE',
   IN_DESCRIPTION: 'IN_DESCRIPTION',
   IN_RETURNS: 'IN_RETURNS',
-  NONE: 'NONE'
+  NONE: 'NONE',
 };
 
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -138,7 +138,7 @@ export default function parse(exampleRaw: string): Example {
         currentStatus = parseToken(currentToken, line, currentStatus, example);
       }
     }
-  } catch (e) {
+  } catch (e: any) {
     // That's fine. The example probably doesn't comply with our standard
   }
 

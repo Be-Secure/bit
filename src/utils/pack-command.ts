@@ -1,7 +1,10 @@
 import zlib from 'zlib';
+
 import toBase64 from './string/to-base64';
 
-module.exports = function packCmd(obj, base64 = true, compress = true) {
+export type PackData = { payload: any; headers: any };
+
+export function packCommand(obj: PackData, base64 = true, compress = true): string {
   if (compress) {
     if (obj.payload) {
       obj.payload = zlib.deflateSync(JSON.stringify(obj.payload));
@@ -17,4 +20,4 @@ module.exports = function packCmd(obj, base64 = true, compress = true) {
     return res;
   }
   return JSON.stringify(obj);
-};
+}

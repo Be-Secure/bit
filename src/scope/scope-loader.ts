@@ -1,13 +1,14 @@
 import * as path from 'path';
-import Scope from './scope';
+
 import { resolveHomePath } from '../utils';
 import { ScopeNotFound } from './exceptions';
+import Scope from './scope';
 
 export default function loadScope(currentPath?: string | null | undefined, useCache = true): Promise<Scope> {
   if (!currentPath) currentPath = process.cwd();
   try {
     return Scope.load(path.resolve(resolveHomePath(currentPath)), useCache);
-  } catch (err) {
+  } catch (err: any) {
     return Promise.reject(err);
   }
 }
@@ -19,7 +20,7 @@ export async function loadScopeIfExist(
 ): Promise<Scope | undefined> {
   try {
     return await loadScope(currentPath, useCache);
-  } catch (err) {
+  } catch (err: any) {
     if (err instanceof ScopeNotFound) {
       return undefined;
     }

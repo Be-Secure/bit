@@ -1,16 +1,16 @@
-import * as path from 'path';
 import chai, { expect } from 'chai';
-import Helper from '../../src/e2e-helper/e2e-helper';
+import * as path from 'path';
+
 import DiagnosisNotFound from '../../src/api/consumer/lib/exceptions/diagnosis-not-found';
+import Helper from '../../src/e2e-helper/e2e-helper';
 
 chai.use(require('chai-fs'));
 
-describe('bit doctor infra', function() {
+describe('bit doctor infra', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures('legacy-workspace-config');
   });
 
   after(() => {
@@ -32,7 +32,7 @@ describe('bit doctor infra', function() {
     it('should return all the fields for each check', () => {
       const examineResults = parsedOutput.examineResults;
       expect(examineResults).to.be.an('array');
-      examineResults.forEach(checkResult => {
+      examineResults.forEach((checkResult) => {
         expect(checkResult).to.satisfy(_validateCheckResultFormat);
       });
     });
@@ -90,7 +90,7 @@ describe('bit doctor infra', function() {
     });
     it('should return all the fields for each check item', () => {
       expect(parsedOutput).to.be.an('array');
-      parsedOutput.forEach(checkResult => {
+      parsedOutput.forEach((checkResult) => {
         expect(checkResult).to.satisfy(_validateCheckItemFormat);
       });
     });

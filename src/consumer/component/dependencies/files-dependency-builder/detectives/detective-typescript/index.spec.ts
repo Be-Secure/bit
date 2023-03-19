@@ -1,6 +1,7 @@
 /* eslint-env mocha */
-import { expect } from 'chai';
 import assert from 'assert';
+import { expect } from 'chai';
+
 import detective from './';
 
 describe('detective-typescript', () => {
@@ -14,18 +15,18 @@ describe('detective-typescript', () => {
             type: 'VariableDeclarator',
             id: {
               type: 'Identifier',
-              name: 'x'
+              name: 'x',
             },
             init: {
               type: 'Literal',
               value: 4,
-              raw: '4'
-            }
-          }
+              raw: '4',
+            },
+          },
         ],
-        kind: 'let'
-      }
-    ]
+        kind: 'let',
+      },
+    ],
   };
 
   it('accepts an ast', () => {
@@ -125,8 +126,17 @@ describe('detective-typescript', () => {
     it('should recognize when using require statement', () => {
       const deps = detective('const foo = require(`foo`);'); // eslint-disable-line
       const depsKeys = Object.keys(deps);
-      assert.equal(depsKeys.length, 1);
-      assert.equal(depsKeys[0], 'foo');
+      expect(depsKeys).to.have.lengthOf(1);
+      expect(depsKeys[0]).to.equal('foo');
+    });
+  });
+
+  describe('dynamic import', () => {
+    it('should recognize regardless of the location', () => {
+      const deps = detective(`const loadable = (f) => f; const QuickStart = loadable(() => import('lodash'));`); // eslint-disable-line
+      const depsKeys = Object.keys(deps);
+      expect(depsKeys).to.have.lengthOf(1);
+      expect(depsKeys[0]).to.equal('lodash');
     });
   });
 

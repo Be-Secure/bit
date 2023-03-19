@@ -1,16 +1,16 @@
-import * as path from 'path';
 import chai, { expect } from 'chai';
-import Helper from '../../src/e2e-helper/e2e-helper';
+import * as path from 'path';
+
 import ObjectsWithoutConsumer from '../../src/api/consumer/lib/exceptions/objects-without-consumer';
+import Helper from '../../src/e2e-helper/e2e-helper';
 
 chai.use(require('chai-fs'));
 
-describe('user deleted only .bitmap file leaving the objects in place', function() {
+describe('user deleted only .bitmap file leaving the objects in place', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures('legacy-workspace-config');
   });
   after(() => {
     helper.scopeHelper.destroy();
@@ -20,7 +20,7 @@ describe('user deleted only .bitmap file leaving the objects in place', function
     before(() => {
       helper.scopeHelper.reInitLocalScope();
       helper.fixtures.createComponentBarFoo();
-      helper.fixtures.addComponentBarFoo();
+      helper.fixtures.addComponentBarFooAsDir();
       helper.fixtures.tagComponentBarFoo();
       helper.bitMap.delete();
       scopeAfterDeletion = helper.scopeHelper.cloneLocalScope();

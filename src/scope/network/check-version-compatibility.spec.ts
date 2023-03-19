@@ -1,9 +1,10 @@
 import { expect } from 'chai';
-import { checkVersionCompatibilityOnTheServer } from './check-version-compatibility';
+
 import * as constants from '../../constants';
+import { checkVersionCompatibilityOnTheServer } from './check-version-compatibility';
 import { OldClientVersion } from './exceptions';
 
-const setServerVersion = serverVersion => {
+const setServerVersion = (serverVersion) => {
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   constants.BIT_VERSION = serverVersion;
 };

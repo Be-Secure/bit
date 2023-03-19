@@ -1,31 +1,27 @@
 import R from 'ramda';
-import { Ref, BitObject } from '../objects';
-import Source from './source';
-import { filterObject, first, getStringifyArgs } from '../../utils';
-import { CustomResolvedPath } from '../../consumer/component/consumer-component';
+import { pickBy } from 'lodash';
+import { isHash } from '@teambit/component-version';
+import { LaneId } from '@teambit/lane-id';
+import { BitId, BitIds } from '../../bit-id';
+import { BuildStatus, DEFAULT_BINDINGS_PREFIX, DEFAULT_BUNDLE_FILENAME, Extensions } from '../../constants';
 import ConsumerComponent from '../../consumer/component';
-import { BitIds, BitId } from '../../bit-id';
-import { Doclet } from '../../jsdoc/types';
-import { DEFAULT_BUNDLE_FILENAME, DEFAULT_BINDINGS_PREFIX, DEPENDENCIES_FIELDS } from '../../constants';
-import { Results } from '../../consumer/specs-results/specs-results';
+import { isSchemaSupport, SchemaFeature, SchemaName } from '../../consumer/component/component-schema';
 import { Dependencies, Dependency } from '../../consumer/component/dependencies';
-import { PathLinux, PathLinuxRelative } from '../../utils/path';
-import { CompilerExtensionModel } from '../../legacy-extensions/compiler-extension';
-import { TesterExtensionModel } from '../../legacy-extensions/tester-extension';
 import { SourceFile } from '../../consumer/component/sources';
-import Repository from '../objects/repository';
-import VersionInvalid from '../exceptions/version-invalid';
-import logger from '../../logger/logger';
-import validateVersionInstance from '../version-validator';
+import { getRefsFromExtensions } from '../../consumer/component/sources/artifact-files';
 import { ComponentOverridesData } from '../../consumer/config/component-overrides';
-import { EnvPackages } from '../../legacy-extensions/env-extension';
-import { ExtensionDataList, ExtensionDataEntry } from '../../consumer/config/extension-data';
-
-type CiProps = {
-  error: Record<string, any>;
-  startTime: string;
-  endTime: string;
-};
+import { ExtensionDataEntry, ExtensionDataList } from '../../consumer/config/extension-data';
+import { Doclet } from '../../jsdoc/types';
+import logger from '../../logger/logger';
+import { getStringifyArgs } from '../../utils';
+import { PathLinux } from '../../utils/path';
+import VersionInvalid from '../exceptions/version-invalid';
+import { BitObject, Ref } from '../objects';
+import { ObjectItem } from '../objects/object-list';
+import Repository from '../objects/repository';
+import validateVersionInstance from '../version-validator';
+import Source from './source';
+import { getHarmonyVersion } from '../../bootstrap';
 
 export type SourceFileModel = {
   name: string;
@@ -48,38 +44,39 @@ export type Log = {
   email: string | undefined;
 };
 
+export type DepEdgeType = 'prod' | 'dev' | 'ext';
+export type DepEdge = { source: BitId; target: BitId; type: DepEdgeType };
+
+type ExternalHead = { head: Ref; laneId: LaneId };
+type SquashData = { previousParents: Ref[]; laneId: LaneId };
+
 export type VersionProps = {
   mainFile: PathLinux;
   files: Array<SourceFileModel>;
-  dists?: Array<DistFileModel> | undefined;
-  mainDistFile: PathLinux | undefined;
-  compiler?: CompilerExtensionModel | undefined;
-  tester?: TesterExtensionModel | undefined;
   log: Log;
-  ci?: CiProps;
-  specsResults?: Results | undefined;
   docs?: Doclet[];
   dependencies?: Dependency[];
   devDependencies?: Dependency[];
   flattenedDependencies?: BitIds;
-  flattenedDevDependencies?: BitIds;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  flattenedEdges?: DepEdge[];
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   packageDependencies?: { [key: string]: string };
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   devPackageDependencies?: { [key: string]: string };
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   peerPackageDependencies?: { [key: string]: string };
-  compilerPackageDependencies?: EnvPackages;
-  testerPackageDependencies?: EnvPackages;
   bindingPrefix?: string;
-  ignoreSharedDir?: boolean;
-  customResolvedPaths?: CustomResolvedPath[];
+  schema?: string;
   overrides: ComponentOverridesData;
   packageJsonChangedProps?: Record<string, any>;
+  hash?: string;
+  parents?: Ref[];
+  squashed?: SquashData;
+  unrelated?: ExternalHead;
   extensions?: ExtensionDataList;
+  buildStatus?: BuildStatus;
+  componentId?: BitId;
+  bitVersion?: string;
 };
 
 /**
@@ -88,69 +85,61 @@ export type VersionProps = {
 export default class Version extends BitObject {
   mainFile: PathLinux;
   files: Array<SourceFileModel>;
-  dists: Array<DistFileModel> | undefined;
-  mainDistFile: PathLinuxRelative | undefined;
-  compiler: CompilerExtensionModel | undefined;
-  tester: TesterExtensionModel | undefined;
   log: Log;
-  ci: CiProps | {};
-  specsResults: Results | undefined;
   docs: Doclet[] | undefined;
   dependencies: Dependencies;
   devDependencies: Dependencies;
   flattenedDependencies: BitIds;
-  flattenedDevDependencies: BitIds;
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  flattenedEdges: DepEdge[];
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   packageDependencies: { [key: string]: string };
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   devPackageDependencies: { [key: string]: string };
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-  // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   peerPackageDependencies: { [key: string]: string };
-  compilerPackageDependencies: EnvPackages;
-  testerPackageDependencies: EnvPackages;
   bindingPrefix: string | undefined;
-  ignoreSharedDir: boolean | undefined;
-  customResolvedPaths: CustomResolvedPath[] | undefined;
+  schema: string | undefined;
   overrides: ComponentOverridesData;
   packageJsonChangedProps: Record<string, any>;
+  _hash: string; // reason for the underscore prefix is that we already have hash as a method
+  parents: Ref[];
+  squashed?: SquashData; // when a component is squashed during lane-merge
+  unrelated?: ExternalHead; // when a component from a lane was created with the same name/scope as main, this ref points to the component of the lane
   extensions: ExtensionDataList;
+  buildStatus?: BuildStatus;
+  componentId?: BitId; // can help debugging errors when validating Version object
+  bitVersion?: string;
 
   constructor(props: VersionProps) {
     super();
     this.mainFile = props.mainFile;
     this.files = props.files;
-    this.dists = props.dists;
-    this.mainDistFile = props.mainDistFile;
-    this.compiler = props.compiler;
-    this.tester = props.tester;
     this.log = props.log;
     this.dependencies = new Dependencies(props.dependencies);
     this.devDependencies = new Dependencies(props.devDependencies);
     this.docs = props.docs;
-    this.ci = props.ci || {};
-    this.specsResults = props.specsResults;
     this.flattenedDependencies = props.flattenedDependencies || new BitIds();
-    this.flattenedDevDependencies = props.flattenedDevDependencies || new BitIds();
+    this.flattenedEdges = props.flattenedEdges || [];
     this.packageDependencies = props.packageDependencies || {};
     this.devPackageDependencies = props.devPackageDependencies || {};
     this.peerPackageDependencies = props.peerPackageDependencies || {};
-    this.compilerPackageDependencies = props.compilerPackageDependencies || {};
-    this.testerPackageDependencies = props.testerPackageDependencies || {};
     this.bindingPrefix = props.bindingPrefix;
-    this.ignoreSharedDir = props.ignoreSharedDir;
-    this.customResolvedPaths = props.customResolvedPaths;
+    this.schema = props.schema;
     this.overrides = props.overrides || {};
     this.packageJsonChangedProps = props.packageJsonChangedProps || {};
+    // @ts-ignore yes, props.hash can be undefined here, but it gets populated as soon as Version is created
+    this._hash = props.hash;
+    this.parents = props.parents || [];
+    this.squashed = props.squashed;
+    this.unrelated = props.unrelated;
     this.extensions = props.extensions || ExtensionDataList.fromArray([]);
+    this.buildStatus = props.buildStatus;
+    this.componentId = props.componentId;
+    this.bitVersion = props.bitVersion;
     this.validateVersion();
   }
 
   validateVersion() {
     const nonEmptyFields = ['mainFile', 'files'];
-    nonEmptyFields.forEach(field => {
+    nonEmptyFields.forEach((field) => {
       if (!this[field]) {
         throw new VersionInvalid(`failed creating a version object, the field "${field}" can't be empty`);
       }
@@ -167,22 +156,29 @@ export default class Version extends BitObject {
       return clonedDependencies.map((dependency: Dependency) => {
         return {
           id: dependency.id,
-          relativePaths: dependency.relativePaths.map(relativePath => {
+          relativePaths: dependency.relativePaths.map((relativePath) => {
             return {
               sourceRelativePath: relativePath.sourceRelativePath,
-              destinationRelativePath: relativePath.destinationRelativePath
+              destinationRelativePath: relativePath.destinationRelativePath,
             };
-          })
+          }),
         };
       });
+    };
+
+    const getExtensions = (extensions: ExtensionDataList) => {
+      const sortedConfigOnly = extensions.sortById().toConfigArray();
+      return sortedConfigOnly;
     };
 
     const filterFunction = (val, key) => {
       if (
         key === 'devDependencies' ||
+        key === 'extensionDependencies' ||
         key === 'devPackageDependencies' ||
         key === 'peerPackageDependencies' ||
-        key === 'overrides'
+        key === 'overrides' ||
+        key === 'extensions'
       ) {
         return !R.isEmpty(val);
       }
@@ -190,20 +186,17 @@ export default class Version extends BitObject {
     };
 
     return JSON.stringify(
-      filterObject(
+      pickBy(
         {
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           mainFile: obj.mainFile,
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           files: obj.files,
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-          compiler: obj.compiler,
-          // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-          tester: obj.tester,
-          // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           log: obj.log,
           dependencies: getDependencies(this.dependencies),
           devDependencies: getDependencies(this.devDependencies),
+          extensionDependencies: getDependencies(this.extensionDependencies),
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           packageDependencies: obj.packageDependencies,
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -213,26 +206,38 @@ export default class Version extends BitObject {
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           bindingPrefix: obj.bindingPrefix,
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-          overrides: obj.overrides
+          overrides: obj.overrides,
+          extensions: getExtensions(this.extensions),
         },
         filterFunction
       )
     );
   }
 
+  calculateHash(): Ref {
+    return new Ref(BitObject.makeHash(this.id()));
+  }
+
+  hash(): Ref {
+    if (!this._hash) {
+      throw new Error('hash is missing from a Version object');
+    }
+    return new Ref(this._hash);
+  }
+
   get extensionDependencies() {
-    return new Dependencies(this.extensions.extensionsBitIds.map(id => new Dependency(id, [])));
+    return new Dependencies(this.extensions.extensionsBitIds.map((id) => new Dependency(id, [])));
   }
 
   getAllFlattenedDependencies(): BitIds {
-    return BitIds.fromArray([...this.flattenedDependencies, ...this.flattenedDevDependencies]);
+    return BitIds.fromArray([...this.flattenedDependencies]);
   }
 
   getAllDependencies(): Dependency[] {
     return [
       ...this.dependencies.dependencies,
       ...this.devDependencies.dependencies,
-      ...this.extensionDependencies.dependencies
+      ...this.extensionDependencies.dependencies,
     ];
   }
 
@@ -240,7 +245,7 @@ export default class Version extends BitObject {
     return {
       dependencies: this.dependencies.getAllIds(),
       devDependencies: this.devDependencies.getAllIds(),
-      extensionDependencies: this.extensions.extensionsBitIds
+      extensionDependencies: this.extensions.extensionsBitIds,
     };
   }
 
@@ -260,114 +265,110 @@ export default class Version extends BitObject {
 
   updateFlattenedDependency(currentId: BitId, newId: BitId) {
     const getUpdated = (flattenedDependencies: BitIds): BitIds => {
-      const updatedIds = flattenedDependencies.map(depId => {
+      const updatedIds = flattenedDependencies.map((depId) => {
         if (depId.isEqual(currentId)) return newId;
         return depId;
       });
       return BitIds.fromArray(updatedIds);
     };
     this.flattenedDependencies = getUpdated(this.flattenedDependencies);
-    this.flattenedDevDependencies = getUpdated(this.flattenedDevDependencies);
   }
 
   refs(): Ref[] {
-    const extractRefsFromFiles = files => {
-      const refs = files ? files.map(file => file.file) : [];
+    return this.refsWithOptions();
+  }
+
+  refsWithOptions(includeParents = true, includeArtifacts = true): Ref[] {
+    const allRefs: Ref[] = [];
+    const extractRefsFromFiles = (files) => {
+      const refs = files ? files.map((file) => file.file) : [];
       return refs;
     };
     const files = extractRefsFromFiles(this.files);
-    const dists = extractRefsFromFiles(this.dists);
-    const artifacts = extractRefsFromFiles(R.flatten(this.extensions.map(e => e.artifacts)));
-    return [...dists, ...files, ...artifacts].filter(ref => ref);
+    allRefs.push(...files);
+    if (includeParents) {
+      allRefs.push(...this.parents);
+    }
+    if (includeArtifacts) {
+      const artifacts = getRefsFromExtensions(this.extensions);
+      allRefs.push(...artifacts);
+    }
+    return allRefs;
+  }
+
+  refsWithoutParents(): Ref[] {
+    const extractRefsFromFiles = (files) => {
+      const refs = files ? files.map((file) => file.file) : [];
+      return refs;
+    };
+    const files = extractRefsFromFiles(this.files);
+    const artifacts = getRefsFromExtensions(this.extensions);
+    return [...files, ...artifacts].filter((ref) => ref);
+  }
+
+  async collectManyObjects(repo: Repository, refs: Ref[]): Promise<ObjectItem[]> {
+    return repo.loadManyRaw(refs);
   }
 
   toObject() {
-    const _convertFileToObject = file => {
+    const _convertFileToObject = (file) => {
       return {
         file: file.file.toString(),
         relativePath: file.relativePath,
         name: file.name,
-        test: file.test
+        test: file.test,
       };
     };
-
-    const _convertEnvToObject = env => {
-      if (typeof env === 'string') {
-        return env;
-      }
-      // Store the env as string in case there is no config and files (for backward compatibility)
-      if (envNameOnly(env)) {
-        return env.name;
-      }
-      const result = {
-        name: env.name,
-        config: env.config,
-        files: []
+    const depEdgeToObject = (depEdge: DepEdge) => {
+      return {
+        source: depEdge.source.serialize(),
+        target: depEdge.target.serialize(),
+        type: depEdge.type,
       };
-      return result;
     };
-
-    const _removeEmptyPackagesEnvs = pkgEnv => {
-      DEPENDENCIES_FIELDS.forEach(dependencyType => {
-        if (pkgEnv[dependencyType] && R.isEmpty(pkgEnv[dependencyType])) {
-          delete pkgEnv[dependencyType];
-        }
-      });
-      return pkgEnv;
-    };
-
-    return filterObject(
+    return pickBy(
       {
         files: this.files ? this.files.map(_convertFileToObject) : null,
         mainFile: this.mainFile,
-        dists: this.dists ? this.dists.map(_convertFileToObject) : null,
-        mainDistFile: this.mainDistFile,
-        compiler: this.compiler ? _convertEnvToObject(this.compiler) : null,
         bindingPrefix: this.bindingPrefix || DEFAULT_BINDINGS_PREFIX,
-        ignoreSharedDir: this.ignoreSharedDir,
-        tester: this.tester ? _convertEnvToObject(this.tester) : null,
+        schema: this.schema,
         log: {
           message: this.log.message,
           date: this.log.date,
           username: this.log.username,
-          email: this.log.email
+          email: this.log.email,
         },
-        ci: this.ci,
-        specsResults: this.specsResults,
         docs: this.docs,
         dependencies: this.dependencies.cloneAsObject(),
         devDependencies: this.devDependencies.cloneAsObject(),
-        flattenedDependencies: this.flattenedDependencies.map(dep => dep.serialize()),
-        flattenedDevDependencies: this.flattenedDevDependencies.map(dep => dep.serialize()),
-        extensions: this.extensions.map(ext => {
-          const extensionClone = ext.clone();
-          if (extensionClone.extensionId) {
-            // TODO: fix the types of extensions. after this it should be an object not an object id
-            // @ts-ignore
-            extensionClone.extensionId = ext.extensionId.serialize();
-          }
-          extensionClone.artifacts = extensionClone.artifacts.map(file => ({
-            file: file.file.toString(),
-            relativePath: file.relativePath
-          }));
-          return extensionClone;
-        }),
+        flattenedDependencies: this.flattenedDependencies.map((dep) => dep.serialize()),
+        flattenedEdges: this.flattenedEdges.map((f) => depEdgeToObject(f)),
+        extensions: this.extensions.toModelObjects(),
         packageDependencies: this.packageDependencies,
         devPackageDependencies: this.devPackageDependencies,
         peerPackageDependencies: this.peerPackageDependencies,
-        compilerPackageDependencies: _removeEmptyPackagesEnvs(this.compilerPackageDependencies),
-        testerPackageDependencies: _removeEmptyPackagesEnvs(this.testerPackageDependencies),
-        customResolvedPaths: this.customResolvedPaths,
         overrides: this.overrides,
-        packageJsonChangedProps: this.packageJsonChangedProps
+        buildStatus: this.buildStatus,
+        packageJsonChangedProps: this.packageJsonChangedProps,
+        parents: this.parents.map((p) => p.toString()),
+        squashed: this.squashed
+          ? {
+              previousParents: this.squashed.previousParents.map((p) => p.toString()),
+              laneId: this.squashed.laneId.toObject(),
+            }
+          : undefined,
+        unrelated: this.unrelated
+          ? { head: this.unrelated.head.toString(), laneId: this.unrelated.laneId.toObject() }
+          : undefined,
+        bitVersion: this.bitVersion,
       },
-      val => !!val
+      (val) => !!val
     );
   }
 
   validateBeforePersisting(versionStr: string): void {
-    logger.silly(`validating version object, hash: ${this.hash().hash}`);
-    const version = Version.parse(versionStr);
+    logger.trace(`validating version object, hash: ${this.hash().hash}`);
+    const version = Version.parse(versionStr, this._hash);
     version.validate();
   }
 
@@ -378,52 +379,50 @@ export default class Version extends BitObject {
     if (this.validateBeforePersist) this.validateBeforePersisting(str);
     return Buffer.from(str);
   }
-
   /**
    * used by the super class BitObject
    */
-  static parse(contents: string): Version {
+  static parse(contents: string, hash: string): Version {
+    const contentParsed = JSON.parse(contents);
     const {
       mainFile,
-      dists,
-      mainDistFile,
       files,
-      compiler,
       bindingPrefix,
-      ignoreSharedDir,
-      tester,
+      schema,
       log,
       docs,
-      ci,
-      specsResults,
       dependencies,
       devDependencies,
       flattenedDependencies,
+      flattenedEdges,
       flattenedDevDependencies,
       devPackageDependencies,
       peerPackageDependencies,
-      compilerPackageDependencies,
-      testerPackageDependencies,
       packageDependencies,
-      customResolvedPaths,
       overrides,
       packageJsonChangedProps,
-      extensions
-    } = JSON.parse(contents);
+      extensions,
+      buildStatus,
+      parents,
+      squashed,
+      unrelated,
+      bitVersion,
+    } = contentParsed;
+
     const _getDependencies = (deps = []): Dependency[] => {
-      if (deps.length && R.is(String, first(deps))) {
+      if (deps.length && R.is(String, deps[0])) {
         // backward compatibility
         // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        return deps.map(dependency => ({ id: BitId.parseObsolete(dependency) }));
+        return deps.map((dependency) => ({ id: BitId.parseObsolete(dependency) }));
       }
 
-      const getRelativePath = relativePath => {
+      const getRelativePath = (relativePath) => {
         if (relativePath.importSpecifiers) {
           // backward compatibility. Before the massive validation was added, an item of
           // relativePath.importSpecifiers array could be missing the mainFile property, which is
           // an invalid ImportSpecifier. (instead the mainFile it had another importSpecifiers object).
           relativePath.importSpecifiers = relativePath.importSpecifiers.filter(
-            importSpecifier => importSpecifier.mainFile
+            (importSpecifier) => importSpecifier.mainFile
           );
           if (!relativePath.importSpecifiers.length) delete relativePath.importSpecifiers;
         }
@@ -436,24 +435,39 @@ export default class Version extends BitObject {
           id: BitId.parseBackwardCompatible(dependency.id),
           relativePaths: Array.isArray(dependency.relativePaths)
             ? dependency.relativePaths.map(getRelativePath)
-            : dependency.relativePaths
+            : dependency.relativePaths,
         };
       });
     };
 
-    const _getFlattenedDependencies = (deps = []): BitIds => {
-      return BitIds.fromArray(deps.map(dep => BitId.parseBackwardCompatible(dep)));
+    const _getFlattenedDependencies = (deps = []): BitId[] => {
+      return deps.map((dep) => BitId.parseBackwardCompatible(dep));
     };
 
-    const parseFile = file => {
+    const _getDepEdge = (depEdgeObj): DepEdge => {
+      return {
+        source: new BitId(depEdgeObj.source),
+        target: new BitId(depEdgeObj.target),
+        type: depEdgeObj.type,
+      };
+    };
+
+    const _groupFlattenedDependencies = () => {
+      // support backward compatibility. until v15, there was both flattenedDependencies and
+      // flattenedDevDependencies. since then, these both were grouped to one flattenedDependencies
+      const flattenedDeps = _getFlattenedDependencies(flattenedDependencies);
+      const flattenedDevDeps = _getFlattenedDependencies(flattenedDevDependencies);
+      return BitIds.fromArray([...flattenedDeps, ...flattenedDevDeps]);
+    };
+
+    const parseFile = (file) => {
       return {
         file: Ref.from(file.file),
         relativePath: file.relativePath,
         name: file.name,
-        test: file.test
+        test: file.test,
       };
     };
-    // @ts-ignore
     const _getExtensions = (exts = []): ExtensionDataList => {
       if (exts.length) {
         const newExts = exts.map((extension: any) => {
@@ -462,21 +476,16 @@ export default class Version extends BitObject {
             const entry = new ExtensionDataEntry(undefined, extensionId, undefined, extension.config, extension.data);
             return entry;
           }
-          const artifacts = (extension.artifacts || []).map(a => ({
-            file: Ref.from(a.file),
-            relativePath: a.relativePath
-          }));
           const entry = new ExtensionDataEntry(
             extension.id,
             undefined,
             extension.name,
             extension.config,
-            extension.data,
-            artifacts
+            extension.data
           );
           return entry;
         });
-        return ExtensionDataList.fromArray(newExts);
+        return ExtensionDataList.fromModelObject(newExts);
       }
       return new ExtensionDataList();
     };
@@ -484,117 +493,63 @@ export default class Version extends BitObject {
     return new Version({
       mainFile,
       files: files ? files.map(parseFile) : null,
-      dists: dists ? dists.map(parseFile) : null,
-      mainDistFile,
-      compiler: compiler ? parseEnv(compiler) : null,
       bindingPrefix: bindingPrefix || null,
-      ignoreSharedDir: ignoreSharedDir || undefined,
-      tester: tester ? parseEnv(tester) : null,
+      schema: schema || undefined,
       log: {
         message: log.message,
         date: log.date,
         username: log.username,
-        email: log.email
+        email: log.email,
       },
-      ci,
-      specsResults,
       docs,
       dependencies: _getDependencies(dependencies),
       devDependencies: _getDependencies(devDependencies),
-      flattenedDependencies: _getFlattenedDependencies(flattenedDependencies),
-      flattenedDevDependencies: _getFlattenedDependencies(flattenedDevDependencies),
+      flattenedDependencies: _groupFlattenedDependencies(),
+      flattenedEdges: flattenedEdges?.map((f) => _getDepEdge(f)) || [],
       devPackageDependencies,
       peerPackageDependencies,
-      compilerPackageDependencies,
-      testerPackageDependencies,
       packageDependencies,
-      customResolvedPaths,
       overrides,
       packageJsonChangedProps,
-      extensions: _getExtensions(extensions)
+      hash,
+      parents: parents ? parents.map((p) => Ref.from(p)) : [],
+      squashed: squashed
+        ? { previousParents: squashed.previousParents.map((r) => Ref.from(r)), laneId: new LaneId(squashed.laneId) }
+        : undefined,
+      unrelated: unrelated ? { head: Ref.from(unrelated.head), laneId: new LaneId(unrelated.laneId) } : undefined,
+      extensions: _getExtensions(extensions),
+      buildStatus,
+      bitVersion,
     });
   }
 
   /**
    * used by raw-object.toRealObject()
    */
-  static from(versionProps: VersionProps): Version {
-    return Version.parse(JSON.stringify(versionProps));
+  static from(versionProps: VersionProps, hash: string): Version {
+    return Version.parse(JSON.stringify(versionProps), hash);
   }
 
   /**
    * Create version model object from consumer component
    * @param {*} param0
    */
-  static fromComponent({
-    component,
-    files,
-    dists,
-    mainDistFile,
-    flattenedDependencies,
-    flattenedDevDependencies,
-    message,
-    specsResults,
-    extensions,
-    username,
-    email
-  }: {
-    component: ConsumerComponent;
-    files: Array<SourceFileModel>;
-    flattenedDependencies: BitIds;
-    flattenedDevDependencies: BitIds;
-    message: string;
-    dists: Array<DistFileModel> | undefined;
-    mainDistFile: PathLinuxRelative;
-    specsResults: Results | undefined;
-    extensions: ExtensionDataList;
-    username: string | undefined;
-    email: string | undefined;
-  }) {
-    const parseFile = file => {
+  static fromComponent({ component, files }: { component: ConsumerComponent; files: Array<SourceFileModel> }) {
+    const parseFile = (file) => {
       return {
         file: file.file.hash(),
         relativePath: file.relativePath,
         name: file.name,
-        test: file.test
+        test: file.test,
       };
     };
 
-    const compiler = component.compiler ? component.compiler.toModelObject() : undefined;
-    const tester = component.tester ? component.tester.toModelObject() : undefined;
-
-    const parseComponentExtensions = () => {
-      const extensionsCloned = extensions;
-      extensionsCloned.forEach(extensionDataEntry => {
-        extensionDataEntry.artifacts = extensionDataEntry.artifacts.map(artifact => {
-          return {
-            file: artifact.file.hash(),
-            relativePath: artifact.relativePath
-          };
-        });
-      });
-      return extensionsCloned;
-    };
-
-    const compilerDynamicPakageDependencies = component.compiler
-      ? component.compiler.dynamicPackageDependencies
-      : undefined;
-    const testerDynamicPakageDependencies = component.tester ? component.tester.dynamicPackageDependencies : undefined;
-    return new Version({
+    if (!component.log) throw new Error('Version.fromComponent - component.log is missing');
+    const version = new Version({
       mainFile: component.mainFile,
       files: files.map(parseFile),
-      dists: dists ? dists.map(parseFile) : undefined,
-      mainDistFile,
-      compiler,
       bindingPrefix: component.bindingPrefix,
-      tester,
-      log: {
-        message,
-        username,
-        email,
-        date: Date.now().toString()
-      },
-      specsResults,
+      log: component.log as Log,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       docs: component.docs,
       dependencies: component.dependencies.get(),
@@ -602,27 +557,37 @@ export default class Version extends BitObject {
       packageDependencies: component.packageDependencies,
       devPackageDependencies: component.devPackageDependencies,
       peerPackageDependencies: component.peerPackageDependencies,
-      compilerPackageDependencies: R.mergeDeepRight(
-        component.compilerPackageDependencies || {},
-        compilerDynamicPakageDependencies || {}
-      ),
-      testerPackageDependencies: R.mergeDeepRight(
-        component.testerPackageDependencies || {},
-        testerDynamicPakageDependencies || {}
-      ),
-      flattenedDependencies,
-      flattenedDevDependencies,
-      ignoreSharedDir: component.ignoreSharedDir,
-      customResolvedPaths: component.customResolvedPaths,
+      flattenedDependencies: component.flattenedDependencies,
+      flattenedEdges: component.flattenedEdges,
+      schema: component.schema,
       overrides: component.overrides.componentOverridesData,
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
       packageJsonChangedProps: component.packageJsonChangedProps,
-      extensions: parseComponentExtensions()
+      extensions: component.extensions,
+      buildStatus: component.buildStatus,
+      componentId: component.id,
+      bitVersion: getHarmonyVersion(true),
     });
+    if (isHash(component.version)) {
+      version._hash = component.version as string;
+    } else {
+      version.setNewHash();
+    }
+
+    return version;
   }
 
-  setSpecsResults(specsResults: Results | undefined) {
-    this.specsResults = specsResults;
+  setNewHash() {
+    // @todo: after v15 is deployed, this can be changed to generate a random uuid
+    this._hash = this.calculateHash().toString();
+  }
+
+  get ignoreSharedDir(): boolean {
+    return !isSchemaSupport(SchemaFeature.sharedDir, this.schema);
+  }
+
+  get isLegacy(): boolean {
+    return !this.schema || this.schema === SchemaName.Legacy;
   }
 
   setDist(dist: Source | undefined) {
@@ -630,18 +595,44 @@ export default class Version extends BitObject {
     this.dist = dist
       ? {
           file: dist.hash(),
-          name: DEFAULT_BUNDLE_FILENAME
+          name: DEFAULT_BUNDLE_FILENAME,
         }
       : null;
   }
 
-  setCIProps(ci: CiProps) {
-    this.ci = ci;
+  hasParent(ref: Ref) {
+    return this.parents.find((p) => p.toString() === ref.toString());
+  }
+
+  addParent(ref: Ref) {
+    if (this.isLegacy) return;
+    if (this.hasParent(ref)) {
+      return; // make sure to not add twice
+    }
+    this.parents.push(ref);
+  }
+
+  setSquashed(squashData: SquashData) {
+    this.squashed = squashData;
+  }
+
+  addAsOnlyParent(ref: Ref) {
+    if (this.isLegacy) return;
+    this.parents = [ref];
+  }
+
+  removeParent(ref: Ref) {
+    this.parents = this.parents.filter((p) => p.toString() !== ref.toString());
   }
 
   modelFilesToSourceFiles(repository: Repository): Promise<SourceFile[]> {
-    return Promise.all(this.files.map(file => SourceFile.loadFromSourceFileModel(file, repository)));
+    return Promise.all(this.files.map((file) => SourceFile.loadFromSourceFileModel(file, repository)));
   }
+
+  isRemoved(): boolean {
+    return Boolean(this.extensions.findCoreExtension(Extensions.remove)?.config?.removed);
+  }
+
   /**
    * Validate the version model properties, to make sure we are not inserting something
    * in the wrong format
@@ -649,25 +640,4 @@ export default class Version extends BitObject {
   validate(): void {
     validateVersionInstance(this);
   }
-}
-
-function parseEnv(env) {
-  if (typeof env === 'string') {
-    return env;
-  }
-  // Store the env as string in case there is no config and files (for backward compatibility)
-  if (envNameOnly(env)) {
-    return env.name;
-  }
-  return {
-    name: env.name,
-    config: env.config
-  };
-}
-
-function envNameOnly(env) {
-  if ((!env.config || R.isEmpty(env.config)) && (!env.files || R.isEmpty(env.files))) {
-    return true;
-  }
-  return false;
 }

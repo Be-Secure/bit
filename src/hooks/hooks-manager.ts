@@ -51,7 +51,7 @@ export default class HooksManager {
    */
   static init() {
     const self = new HooksManager();
-    HOOKS_NAMES.forEach(hookName => self.hooks.set(hookName, []));
+    HOOKS_NAMES.forEach((hookName) => self.hooks.set(hookName, []));
   }
 
   /**
@@ -59,8 +59,7 @@ export default class HooksManager {
    * @return {HooksManager} instance of the HooksManager
    *
    */
-  static getInstance(): HooksManager {
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
+  static getInstance(): HooksManager | null {
     return instance;
   }
 
@@ -145,7 +144,7 @@ export default class HooksManager {
     }
 
     const actions = this.hooks.get(hookName);
-    const actionsP = actions.map(action => {
+    const actionsP = actions.map((action) => {
       // Catch errors in order to aggregate them
       // Wrap in a promise in case the action doesn't return a promise
       return Promise.resolve()
@@ -153,7 +152,7 @@ export default class HooksManager {
           logger.info(`running action ${action.name} on hook ${hookName}`);
           return action.run(args, headers, context);
         })
-        .catch(e => {
+        .catch((e) => {
           logger.error(`running action ${action.name} on hook ${hookName} failed, err:`, e);
           // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
           resultErrors.push({ [action.name]: e });
@@ -179,6 +178,9 @@ function _stripArgs(args) {
   if (res.componentObjects) {
     res.componentObjects = res.componentObjects.length;
   }
+  if (res.objectList) {
+    res.objectList = args.objectList.count ? args.objectList.count() : undefined;
+  }
   return res;
 }
 
@@ -192,7 +194,7 @@ function _stripHeaders(headers) {
   const res = R.clone(headers);
   if (res.context && res.context.pubSshKey) {
     const key = res.context.pubSshKey;
-    res.context.pubSshKey = `last 70 characters: ${key.substr(key.length - 70)}`;
+    res.context.pubSshKey = `last 70 characters: ${key.slice(key.length - 70)}`;
   }
   return res;
 }

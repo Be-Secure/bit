@@ -1,14 +1,14 @@
 import chalk from 'chalk';
 import R from 'ramda';
+
 import BitId from '../../bit-id/bit-id';
-import hasWildcard from '../../utils/string/has-wildcard';
+import { DEPENDENCIES_FIELDS, OVERRIDE_FILE_PREFIX } from '../../constants';
+import GeneralError from '../../error/general-error';
+import logger from '../../logger/logger';
 import isBitIdMatchByWildcards from '../../utils/bit/is-bit-id-match-by-wildcards';
+import hasWildcard from '../../utils/string/has-wildcard';
 import { validateUserInputType } from '../../utils/validate-type';
 import Component from '../component/consumer-component';
-import GeneralError from '../../error/general-error';
-import AbstractConfig from './abstract-config';
-import { DEPENDENCIES_FIELDS, OVERRIDE_FILE_PREFIX } from '../../constants';
-import logger from '../../logger/logger';
 import { ComponentOverridesData } from './component-overrides';
 
 export type ConsumerOverridesOfComponent = ComponentOverridesData & {
@@ -35,16 +35,19 @@ export default class ConsumerOverrides {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     return new ConsumerOverrides(overrides);
   }
-  getOverrideComponentData(bitId: BitId): ConsumerOverridesOfComponent | null | undefined {
+  getOverrideComponentData(bitId: BitId): ConsumerOverridesOfComponent | undefined {
     const matches = this._getAllRulesMatchedById(bitId);
     if (!matches.length) {
-      return null;
+      return undefined;
     }
-    const overrideValues = matches.map(match => R.clone(this.overrides[match]));
+    const overrideValues = matches.map((match) => R.clone(this.overrides[match]));
     let stopPropagation = false;
     return overrideValues.reduce((acc, current) => {
-      if (stopPropagation) return acc;
-      if (!current.propagate) {
+      if (stopPropagation) {
+        return acc;
+      }
+      if (current.propagate === false) {
+        acc.propagate = false;
         stopPropagation = true;
       }
       this._updateSpecificOverridesWithGeneralOverrides(current, acc);
@@ -55,12 +58,12 @@ export default class ConsumerOverrides {
     generalOverrides: Record<string, any>,
     specificOverrides: Record<string, any>
   ) {
-    const isObjectAndNotArray = val => typeof val === 'object' && !Array.isArray(val);
-    Object.keys(generalOverrides).forEach(field => {
+    const isObjectAndNotArray = (val) => typeof val === 'object' && !Array.isArray(val);
+    Object.keys(generalOverrides).forEach((field) => {
       switch (field) {
         case 'env':
           if (!specificOverrides[field]) specificOverrides[field] = {};
-          ['compiler', 'tester'].forEach(envField => {
+          ['compiler', 'tester'].forEach((envField) => {
             // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
             // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
             if (specificOverrides.env[envField] || !generalOverrides.env[envField]) return;
@@ -85,8 +88,8 @@ export default class ConsumerOverrides {
   }
   _getAllRulesMatchedById(bitId: BitId): string[] {
     const exactMatch = this.findExactMatch(bitId);
-    const matchByGlobPattern = Object.keys(this.overrides).filter(idStr => this._isMatchByWildcard(bitId, idStr));
-    const nonExcluded = matchByGlobPattern.filter(match => !this._isExcluded(this.overrides[match], bitId));
+    const matchByGlobPattern = Object.keys(this.overrides).filter((idStr) => this._isMatchByWildcard(bitId, idStr));
+    const nonExcluded = matchByGlobPattern.filter((match) => !this._isExcluded(this.overrides[match], bitId));
     const allMatches = nonExcluded.sort(ConsumerOverrides.sortWildcards);
     if (exactMatch) allMatches.unshift(exactMatch);
     return allMatches;
@@ -103,7 +106,7 @@ export default class ConsumerOverrides {
     }
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     return overridesValues.exclude.some(
-      excludeRule =>
+      (excludeRule) =>
         this._isMatchByWildcard(bitId, excludeRule) ||
         bitId.toStringWithoutVersion() === excludeRule ||
         bitId.toStringWithoutScopeAndVersion() === excludeRule
@@ -129,9 +132,9 @@ export default class ConsumerOverrides {
    * If the result is 0 no changes is done with the sort order of the two values.
    */
   static sortWildcards(a: string, b: string): number {
-    const numOfNamespaces = str => (str.match(/\//g) || []).length;
-    const numOfWildcards = str => (str.match(/\*/g) || []).length;
-    const indexOfFirstWildcard = str => str.indexOf('*');
+    const numOfNamespaces = (str) => (str.match(/\//g) || []).length;
+    const numOfWildcards = (str) => (str.match(/\*/g) || []).length;
+    const indexOfFirstWildcard = (str) => str.indexOf('*');
     const byNamespaces = numOfNamespaces(b) - numOfNamespaces(a);
     if (byNamespaces !== 0) return byNamespaces;
     const byWildcards = numOfWildcards(a) - numOfWildcards(b);
@@ -142,23 +145,13 @@ export default class ConsumerOverrides {
     return indexOfFirstWildcard(a) - indexOfFirstWildcard(b);
   }
 
-  async updateOverridesIfChanged(component: Component, areEnvsChanged: boolean): Promise<boolean> {
+  updateOverridesIfChanged(component: Component, areEnvsChanged: boolean): boolean {
     const overrides: ConsumerOverridesOfComponent = component.overrides.componentOverridesData;
     const id: BitId = component.id;
     const existingOverrides = this.getOverrideComponentData(id);
     if (!areEnvsChanged && this.areOverridesObjectsEqual(existingOverrides, overrides)) return false;
     const exactMatch = this.findExactMatch(id);
     const key = exactMatch || id.toStringWithoutVersion();
-    const env = {};
-    if (component.compiler) {
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      env.compiler = AbstractConfig.convertEnvToStringIfPossible(component.compiler.toBitJsonObject('.'));
-    }
-    if (component.tester) {
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      env.tester = AbstractConfig.convertEnvToStringIfPossible(component.tester.toBitJsonObject('.'));
-    }
-    if (!R.isEmpty(env)) overrides.env = env;
     this.overrides[key] = overrides;
     this.hasChanged = true;
     return true;
@@ -175,7 +168,7 @@ export default class ConsumerOverrides {
 
   findExactMatch(bitId: BitId): string | null | undefined {
     return Object.keys(this.overrides).find(
-      idStr => bitId.toStringWithoutVersion() === idStr || bitId.toStringWithoutScopeAndVersion() === idStr
+      (idStr) => bitId.toStringWithoutVersion() === idStr || bitId.toStringWithoutScopeAndVersion() === idStr
     );
   }
 
@@ -190,11 +183,11 @@ export default class ConsumerOverrides {
     if (typeof overrides === 'undefined') return;
     const message = 'consumer-config (either bit.json or package.json "bit")';
     validateUserInputType(message, overrides, 'overrides', 'object');
-    Object.keys(overrides).forEach(id => validateComponentOverride(id, overrides[id]));
+    Object.keys(overrides).forEach((id) => validateComponentOverride(id, overrides[id]));
 
     function validateComponentOverride(id, override) {
       validateUserInputType(message, override, `overrides.${id}`, 'object');
-      Object.keys(override).forEach(field => {
+      Object.keys(override).forEach((field) => {
         if (overridesForbiddenFields.includes(field)) {
           throw new GeneralError(`${message} found a forbidden field "${field}" inside "overrides.${id}" property.
 the following fields are not allowed: ${overridesForbiddenFields.join(', ')}.`);
@@ -211,7 +204,7 @@ the following fields are not allowed: ${overridesForbiddenFields.join(', ')}.`);
 
     function validateDependencyField(field: string, override: Record<string, any>, id: string) {
       validateUserInputType(message, override[field], `overrides.${id}.${field}`, 'object');
-      Object.keys(override[field]).forEach(rule => {
+      Object.keys(override[field]).forEach((rule) => {
         validateUserInputType(message, override[field][rule], `overrides.${id}.${field}.${rule}`, 'string');
         if (rule.startsWith(OVERRIDE_FILE_PREFIX)) {
           // @todo: once v15 is out, this warning should be replaced by an error

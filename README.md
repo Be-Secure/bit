@@ -1,75 +1,58 @@
- <a href="https://opensource.org/licenses/Apache-2.0"><img alt="apache" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a>
- <a href="https://github.com/teambit/bit/blob/master/CONTRIBUTING.md"><img alt="prs" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
- <a href="https://circleci.com/gh/teambit/bit/tree/master"><img alt="Circle Status" src="https://circleci.com/gh/teambit/bit/tree/master.svg?style=shield&circle-token=d9fc5b19b90fb7e0655d941a5d7f21b61174c4e7">
-[![styled with prettier](https://img.shields.io/badge/styled_with-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
-<a href="https://join.slack.com/t/bit-dev-community/shared_invite/enQtNzM2NzQ3MTQzMTg3LWI2YmFmZjQwMTkxNmFmNTVkYzU2MGI2YjgwMmJlZDdkNWVhOGIzZDFlYjg4MGRmOTM4ODAxNTIxMTMwNWVhMzg" ><img alt="Join Slack" src="https://img.shields.io/badge/Slack-Join%20Bit%20Slack-blueviolet"/></a>
-[![Tweet](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Share%20code%20components%20as%20a%20team%20@bitdev_&url=https://bit.dev&hashtags=opensource,javascript,programming,reactjs,webdev,vuejs,angularjs)
-
-# Bit is the platform for collaborating on components 
-
-![Bit Workflow](https://storage.googleapis.com/static.bit.dev/docs/images/quick_start.png)
-
-[Documentation](https://docs.bit.dev) • [Tutorials](https://docs.bit.dev/docs/tutorials/bit-react-tutorial) • [Quick start guide ](https://docs.bit.dev/docs/quick-start) • [Workflows](https://docs.bit.dev/docs/workflows/workflows) • [bit.dev components cloud](https://bit.dev) • [Video demo](https://www.youtube.com/watch?v=E5lgoz6-nfs) 
-
-## What is Bit? 🤔
-
-Bit is an [open-source](https://github.com/teambit/bit) cli tool for collaborating on isolated components across projects and repositories.  
-Use Bit to distribute discrete components from a design library or a project into a standalone reusable package and utilize it across applications.  
-You can set up your own server for components collaboration, or use the [bit.dev cloud](#bitdev-cloud-%EF%B8%8F) hosting for private and public components sharing.
-
-## Why Bit? 🎖️
-
-Bit facilitates the process of collaborating on UI components. Team members can share, maintain, and synchronize isolated components from different projects.  
-
-Bit allows teams to:
-
-- Increase code reusability
-- Increase design and development efficiency
-- Retain UI and UX consistency
-- Increase project's stability
-
-## Key Features 🔑
-
-- Extract a component for sharing directly from an existing library or project.
-- Validate the component's independence by building and testing each component separately from the rest of the project.
-- Change the source code of shared components from any application that utilizes it.
-- Get published changes in components on top of local modifications.
-- Contribute back changes made to components directly from the consuming applications.
-- Automatically wrap each component as an npm package.
-- Distribute discrete components instead of a single massive package.
-- Automate component versioning according to changes in its dependencies.
-- Use with leading frameworks and tools: React, Vue, Angular, Mocha, Jest.  
-- Works alongside Git, NPM, and Yarn.
-
-Bit is working with Javascript and Javascript frameworks: 
-
-<img src="https://storage.googleapis.com/static.bit.dev/docs/images/js_logos.png">
-
-## Installation 🚪
-
-Using npm: 
-
-```bash
-npm install bit-bin --global
-```
-
-Using yarn: 
-```bash
-yarn global add bit-bin  
-```
-
-Bit cli requires node 8.12 and above. Check other [installation](https://docs.bit.dev/docs/installation) methods.
-
-## bit.dev cloud 🌩️
-
-Use [bit.dev](https://bit.dev) cloud hosting solution as a shared server and showcase for your components. 
 <p align="center">
- <a href="https://bit.dev"><img src="https://storage.googleapis.com/bit-docs/component-discovery-bit-react-gif.gif"></a>
+  <img src="https://storage.googleapis.com/bit-docs/readme-logo%20(6).png"/>
 </p>
+
+<p align="center">
+  <a href="https://bit.dev/docs/">Docs</a> |
+  <a href="https://bit.dev/">Community Site</a> |
+  <a href="https://bit.cloud/">Bit Cloud</a>
+</p>
+
+</p>
+
+<h3 align="center">
+</h3>
+
+<p align="center">
+  
+<p align="center">
+<a href="https://opensource.org/licenses/Apache-2.0"><img alt="apache" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a>
+<a href="https://github.com/teambit/bit/blob/master/CONTRIBUTING.md"><img alt="prs" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
+<a href="https://circleci.com/gh/teambit/bit/tree/master"><img alt="Circle Status" src="https://circleci.com/gh/teambit/bit/tree/master.svg?style=shield&circle-token=d9fc5b19b90fb7e0655d941a5d7f21b61174c4e7">
+<a href="https://github.com/prettier/prettier"><img alt ="Styled with Prettier" src="https://img.shields.io/badge/styled_with-prettier-ff69b4.svg">
+<a href="https://join.slack.com/t/bit-dev-community/shared_invite/zt-1el4b4sb5-FpgRefqUiZbUH9lvnHgwRg" ><img alt="Join Slack" src="https://img.shields.io/badge/Slack-Join%20Bit%20Slack-blueviolet"/></a>
+
+## Build composable software
+
+Bit is a toolchain for **composable software development**. With Bit, you can build anything in components.
+
+It’s built to **end monolithic applications** and unlock a distributed form of development that is far more scalable, collaborative, and consistent.
+
+Bit allows you to create components that are independently developed, versioned, and can be composed together via dependencies to build anything. Every component can be used and updated in many different applications.
+
+Architectural pains that stem from monolithic development no longer exist; Scalable workflows for autonomous teams, collaboration, rapid delivery, shared components, and even micro frontends become a native and effortless way of work.
+
+Bit comes with native support and best-practice dev environments for most web technologies such as TS, React, and Node, and can be easily extended to support just about anything.
+
+It provides features such as [Workspace](https://bit.dev/docs/workspace/workspace-overview), [Components](https://bit.dev/docs/components/component-overview), [Dev Environments](https://bit.dev/docs/envs/envs-overview/), [Scopes](https://bit.dev/docs/scope/scope-overview), and [Dependencies](https://bit.dev/docs/dependencies/dependencies-overview) (which allow the composition of components and collaboration between developers).
+
+Bit is developed with Bit and you can find all its components on [Bit Cloud Here](https://bit.cloud/teambit/~scopes).
+
+## Getting Started
+
+To get started with Bit head over to the [Community and Documentation site](https://bit.dev) and try the [Quick-Start](https://bit.dev/docs/quick-start/) guide to get up and running in a few minutes, or the longer [Getting Started](https://bit.dev/docs/getting-started/installing-bit/installing-bit) section to try the full tutorial.
+
+Want to learn more? Try the [Thinking in Components](https://bit.dev/docs/thinking-in-components) section.
+
+## Bit and Bit Cloud
+
+To use components in multiple projects and to collaborate with other developers you can host components in a [Remote Scope](https://bit.dev/docs/scope/running-a-scope-server). You can set up and host a remote Scope on any server!
+
+[Bit Cloud](https://bit.cloud) is a platform where you can host components and enjoy advanced features for team management, discovery, consumption, integration, and collaboration. Bit’s cloud platform is home to over 200,000 developers and OSS communities, and hundreds of organizations, from early-stage startups to the world’s largest enterprises.
 
 ## Contributing 🎗️
 
-Contributions are always welcome, no matter how large or small. Before contributing, please read the [code of conduct](CODE_OF_CONDUCT.md).
+Your contribution, no matter how big or small, is always appreciated. Before contributing, please read the [code of conduct](CODE_OF_CONDUCT.md).
 
 See [Contributing](CONTRIBUTING.md).
 

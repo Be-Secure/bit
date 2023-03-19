@@ -1,7 +1,8 @@
 import R from 'ramda';
-import { Consumer } from '../../consumer';
+
 import { BitId } from '../../bit-id';
 import { NODE_PATH_COMPONENT_SEPARATOR } from '../../constants';
+import { Consumer } from '../../consumer';
 import GeneralError from '../../error/general-error';
 
 /**
@@ -53,7 +54,7 @@ export function packageNameToComponentId(consumer: Consumer, packageName: string
   const componentName = getComponentName(packageName, bindingPrefix);
 
   const nameSplit = componentName.split(NODE_PATH_COMPONENT_SEPARATOR);
-  const allBitIds = consumer.bitMap.getAllBitIds();
+  const allBitIds = consumer.bitMap.getAllBitIdsFromAllLanes();
 
   const idWithoutScope = createBitIdAssumeNoScope(nameSplit);
   if (nameSplit.length < 2) {
@@ -121,7 +122,7 @@ export function packageNameToComponentId(consumer: Consumer, packageName: string
 function getComponentName(packageName: string, bindingPrefix: string): string {
   // temp fix to support old components before the migration has been running
   const prefix = bindingPrefix === 'bit' ? '@bit/' : `${bindingPrefix}/`;
-  return packageName.substr(packageName.indexOf(prefix) + prefix.length);
+  return packageName.slice(packageName.indexOf(prefix) + prefix.length);
 }
 
 // happens before export when defaultScope is not set

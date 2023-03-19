@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
-import { identityFile } from '../../../utils';
+
 import logger from '../../../logger/logger';
+import { identityFile } from '../../../utils';
 
 async function readKey(keyPath: string | null | undefined) {
   if (!keyPath) return '';
@@ -8,7 +9,7 @@ async function readKey(keyPath: string | null | undefined) {
   try {
     const fileBuffer = await fs.readFile(keyPath);
     return fileBuffer;
-  } catch (e) {
+  } catch (e: any) {
     return '';
   }
 }

@@ -1,10 +1,10 @@
-import { LegacyCommand } from '../../legacy-command';
-import { remove } from '../../../api/scope';
-import { fromBase64, unpackCommand, packCommand, buildCommandMessage } from '../../../utils';
 import { migrate } from '../../../api/consumer';
+import { remove } from '../../../api/scope';
 import logger from '../../../logger/logger';
 import { checkVersionCompatibilityOnTheServer } from '../../../scope/network/check-version-compatibility';
+import { buildCommandMessage, fromBase64, packCommand, unpackCommand } from '../../../utils';
 import clientSupportCompressedCommand from '../../../utils/ssh/client-support-compressed-command';
+import { LegacyCommand } from '../../legacy-command';
 
 let compressResponse;
 
@@ -23,7 +23,7 @@ export default class Delete implements LegacyCommand {
     logger.info('Checking if a migration is needed');
     const scopePath = fromBase64(path);
     return migrate(scopePath, false).then(() => {
-      return remove({ path: scopePath, ids: payload.bitIds, force: payload.force }, headers);
+      return remove({ path: scopePath, ids: payload.bitIds, force: payload.force, lanes: payload.lanes }, headers);
     });
   }
 

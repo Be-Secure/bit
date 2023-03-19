@@ -1,9 +1,9 @@
-import { PathOsBased } from '../../utils/path';
 import logger from '../../logger/logger';
-import { Doclet } from '../types';
+import { PathOsBased } from '../../utils/path';
 import extractDataRegex from '../extract-data-regex';
+import { Doclet } from '../types';
 
-export default async function parse(data: string, filePath?: PathOsBased): Promise<Doclet[]> {
+export default async function parse(data: string, filePath: PathOsBased): Promise<Doclet[]> {
   const doclets: Array<Doclet> = [];
   try {
     /**
@@ -22,10 +22,10 @@ export default async function parse(data: string, filePath?: PathOsBased): Promi
     // populate doclets array
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    docs.forEach(doc => extractDataRegex(doc, doclets, filePath));
-  } catch (e) {
+    docs.forEach((doc) => extractDataRegex(doc, doclets, filePath));
+  } catch (e: any) {
     // never mind, ignore the doc of this source
-    logger.silly(`failed parsing docs using on path ${filePath} with error`, e);
+    logger.trace(`failed parsing docs using on path ${filePath} with error`, e);
   }
-  return doclets.filter(doclet => doclet.access === 'public');
+  return doclets.filter((doclet) => doclet.access === 'public');
 }

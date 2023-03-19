@@ -1,9 +1,9 @@
-import CommandHelper from './e2e-command-helper';
 import BitJsoncHelper from './e2e-bit-jsonc-helper';
-import ScopesData from './e2e-scopes';
+import CommandHelper from './e2e-command-helper';
 import FixtureHelper from './e2e-fixtures-helper';
-import ScopeHelper from './e2e-scope-helper';
 import FsHelper from './e2e-fs-helper';
+import ScopeHelper from './e2e-scope-helper';
+import ScopesData from './e2e-scopes';
 
 export default class ExtensionsHelper {
   scopes: ScopesData;
@@ -29,11 +29,11 @@ export default class ExtensionsHelper {
   }
 
   addExtensionToWorkspace(extName: string, extConfig = {}) {
-    this.bitJsonc.addKeyVal(this.scopes.localPath, extName, extConfig);
+    this.bitJsonc.addKeyVal(extName, extConfig);
   }
 
-  addExtensionToVariant(variant: string, extName: string, extConfig = {}) {
-    this.bitJsonc.addToVariant(this.scopes.localPath, variant, extName, extConfig);
+  addExtensionToVariant(variant: string, extName: string, extConfig = {}, replaceExisting = false) {
+    this.bitJsonc.addToVariant(variant, extName, extConfig, replaceExisting);
   }
 
   removeAllExtensionsFromVariant(variant: string) {

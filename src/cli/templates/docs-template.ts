@@ -1,14 +1,15 @@
-import R from 'ramda';
 import c from 'chalk';
-import Table from 'tty-table';
-import { paintHeader } from '../chalk-box';
-import { Doclet } from '../../jsdoc/types';
+import R from 'ramda';
+import Table from 'cli-table';
 
-const paintExample = example => {
+import { Doclet } from '../../jsdoc/types';
+import { paintHeader } from '../chalk-box';
+
+const paintExample = (example) => {
   return example.raw;
 };
 
-const paintExamples = examples => {
+const paintExamples = (examples) => {
   if (R.isEmpty(examples) || R.isNil(examples)) {
     return '';
   }
@@ -19,17 +20,9 @@ const paintExamples = examples => {
 export const paintDoc = (doc: Doclet) => {
   const { name, description, args, returns, properties } = doc;
 
-  const header = [
-    { value: 'Name', width: 20, headerColor: 'cyan', headerAlign: 'left' },
-    { value: `${name}`, width: 50, headerColor: 'white', color: 'white', headerAlign: 'left' }
-  ];
-  const opts = {
-    align: 'left'
-  };
+  const table = new Table({ head: ['name', `${name}`], style: { head: ['cyan'] } });
 
-  const table = new Table(header, [], opts);
-
-  const paintArg = arg => {
+  const paintArg = (arg) => {
     if (!arg && !arg.type && !arg.name) {
       return '';
     }
@@ -44,7 +37,7 @@ export const paintDoc = (doc: Doclet) => {
     return `(${args.map(paintArg).join(', ')})`;
   };
 
-  const paintDescription = arg => {
+  const paintDescription = (arg) => {
     if (!arg) return '';
     if (!arg.type) {
       return '';
@@ -64,11 +57,11 @@ export const paintDoc = (doc: Doclet) => {
     [c.cyan('Description'), description],
     [c.cyan('Args'), paintArgs()],
     [c.cyan('Returns'), paintDescription(returns)],
-    [c.cyan('Properties'), paintProperties()]
+    [c.cyan('Properties'), paintProperties()],
   ].filter(([, x]) => x);
 
   table.push(...rows);
-  return table.render() + paintExamples(doc.examples);
+  return table.toString() + paintExamples(doc.examples);
 };
 
 export default (docs: Doclet[] | null | undefined) => {

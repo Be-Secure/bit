@@ -1,8 +1,9 @@
 import uidNumber from 'uid-number';
-import logger from '../logger/logger';
-import GeneralError from '../error/general-error';
 
-export default (async function resolveGroupId(groupName: string): Promise<number | null | undefined> {
+import GeneralError from '../error/general-error';
+import logger from '../logger/logger';
+
+export default async function resolveGroupId(groupName: string): Promise<number | null | undefined> {
   return new Promise((resolve, reject) => {
     uidNumber(null, groupName, (err, uid, gid) => {
       if (err) {
@@ -23,4 +24,4 @@ export default (async function resolveGroupId(groupName: string): Promise<number
       return resolve(gid);
     });
   });
-});
+}

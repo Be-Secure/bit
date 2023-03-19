@@ -1,9 +1,9 @@
 /**
  * this file had been forked from https://github.com/dependents/node-dependency-tree
  */
-import Config from './Config';
 import cabinet from '../filing-cabinet';
 import precinct from '../precinct';
+import Config from './Config';
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 const debug = require('debug')('tree');
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
@@ -24,7 +24,7 @@ const fs = require('fs');
  * @param {Array} [options.nonExistent] - List of partials that do not exist
  * @return {Object}
  */
-export default function(options) {
+export default function (options) {
   const config = new Config(options);
 
   if (!fs.existsSync(config.filename)) {
@@ -47,7 +47,7 @@ export default function(options) {
  *
  * Params are those of module.exports
  */
-module.exports.toList = function(options) {
+module.exports.toList = function (options) {
   options.isListForm = true;
 
   return module.exports(options);
@@ -61,7 +61,7 @@ module.exports.toList = function(options) {
  * @param  {Config} config
  * @return {Array}
  */
-module.exports._getDependencies = function(config) {
+module.exports._getDependencies = function (config) {
   let dependenciesRaw; // from some detectives it comes as an array, from some it is an object
   const precinctOptions = config.detectiveConfig;
   precinctOptions.includeCore = false;
@@ -70,7 +70,7 @@ module.exports._getDependencies = function(config) {
 
   try {
     dependenciesRaw = precinct.paperwork(config.filename, precinctOptions);
-  } catch (e) {
+  } catch (e: any) {
     debug(`error getting dependencies: ${e.message}`);
     debug(e.stack);
     e.code = 'PARSING_ERROR';
@@ -88,7 +88,7 @@ module.exports._getDependencies = function(config) {
   const pathMapDependencies = [];
   const pathMapFile = { file: config.filename };
 
-  dependencies.forEach(dependency => processDependency(dependency));
+  dependencies.forEach((dependency) => processDependency(dependency));
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   pathMapFile.dependencies = pathMapDependencies;
   config.pathMap.push(pathMapFile);
@@ -107,7 +107,7 @@ module.exports._getDependencies = function(config) {
       ast: precinct.ast,
       config: config.requireConfig,
       webpackConfig: config.webpackConfig,
-      resolveConfig: config.resolveConfig
+      resolveConfig: config.resolveConfig,
     };
     if (!isDependenciesArray && dependenciesRaw[dependency].isScript !== undefined) {
       // used for vue
@@ -117,7 +117,7 @@ module.exports._getDependencies = function(config) {
     let result;
     try {
       result = cabinet(cabinetParams);
-    } catch (err) {
+    } catch (err: any) {
       debug(`error resolving dependencies: ${err.message}`);
       debug(err.stack);
       err.code = 'RESOLVE_ERROR';
@@ -192,7 +192,7 @@ function traverse(config) {
     if (config.filter) {
       debug('using filter function to filter out dependencies');
       debug(`number of dependencies before filtering: ${dependencies.length}`);
-      dependencies = dependencies.filter(function(filePath) {
+      dependencies = dependencies.filter(function (filePath) {
         return localConfig.filter(filePath, localConfig.filename);
       });
       debug(`number of dependencies after filtering: ${dependencies.length}`);
@@ -200,12 +200,12 @@ function traverse(config) {
     debug('cabinet-resolved all dependencies: ', dependencies);
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     tree[dependency] = dependencies;
-    const filePathMap = config.pathMap.find(pathMapEntry => pathMapEntry.file === dependency);
+    const filePathMap = config.pathMap.find((pathMapEntry) => pathMapEntry.file === dependency);
     if (!filePathMap) throw new Error(`file ${dependency} is missing from PathMap`);
     config.visited[dependency] = {
       pathMap: filePathMap,
       missing: config.nonExistent[dependency],
-      error: config.errors[dependency]
+      error: config.errors[dependency],
     };
     stack.push(...dependencies);
   }
@@ -225,7 +225,7 @@ function traverse(config) {
       return;
     }
     debug(`found ${dependency} in the cache`);
-    const dependencies = config.visited[dependency].pathMap.dependencies.map(d => d.resolvedDep);
+    const dependencies = config.visited[dependency].pathMap.dependencies.map((d) => d.resolvedDep);
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     tree[dependency] = dependencies;
     config.pathMap.push(config.visited[dependency].pathMap);
@@ -235,7 +235,7 @@ function traverse(config) {
     if (config.visited[dependency].error) {
       config.errors[dependency] = config.visited[dependency].error;
     }
-    dependencies.forEach(d => {
+    dependencies.forEach((d) => {
       if (!tree[d]) dependenciesStack.push(d);
     });
   }

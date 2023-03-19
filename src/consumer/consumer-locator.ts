@@ -3,9 +3,10 @@
  * @deprecated
  * @TODO deprecated and should be removed from here and use fs-propogate-until instead...
  */
-import * as pathlib from 'path';
 import fs from 'fs-extra';
-import { BIT_JSON, BIT_HIDDEN_DIR, BIT_MAP, OLD_BIT_MAP, BIT_GIT_DIR, DOT_GIT_DIR } from '../constants';
+import * as pathlib from 'path';
+
+import { BIT_GIT_DIR, BIT_HIDDEN_DIR, BIT_JSON, BIT_MAP, DOT_GIT_DIR, OLD_BIT_MAP } from '../constants';
 import { LegacyWorkspaceConfig } from './config';
 
 export type ConsumerInfo = {
@@ -52,13 +53,13 @@ export async function getConsumerInfo(absPath: string): Promise<ConsumerInfo | u
     const hasScope = await pathHasScopeDir(path); // eslint-disable-line no-await-in-loop
     const hasConsumerConfig = await pathHasConsumerConfig(path); // eslint-disable-line no-await-in-loop
     const hasBitMap = await pathHasBitMap(path); // eslint-disable-line no-await-in-loop
-    const consumerExists = (hasScope && hasConsumerConfig) || hasBitMap;
+    const consumerExists = hasConsumerConfig || hasBitMap;
     if (consumerExists) {
       return {
         path,
         hasScope,
         hasConsumerConfig,
-        hasBitMap
+        hasBitMap,
       };
     }
   }

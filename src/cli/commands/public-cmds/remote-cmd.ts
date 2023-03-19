@@ -1,16 +1,20 @@
 /* eslint max-classes-per-file: 0 */
 
 import chalk from 'chalk';
-import Table from 'tty-table';
-import { LegacyCommand, CommandOptions } from '../../legacy-command';
-import { remoteList, remoteAdd, remoteRm } from '../../../api/consumer';
-import { forEach, empty } from '../../../utils';
-import RemoteUndefined from '../exceptions/remote-undefined';
+import Table from 'cli-table';
+import { forEach, isEmpty } from 'lodash';
+
+import { remoteAdd, remoteList, remoteRm } from '../../../api/consumer';
 import { BASE_DOCS_DOMAIN } from '../../../constants';
+import { Group } from '../../command-groups';
+import { CommandOptions, LegacyCommand } from '../../legacy-command';
+import RemoteUndefined from '../exceptions/remote-undefined';
 
 class RemoteAdd implements LegacyCommand {
   name = 'add <url>';
-  description = 'add a tracked bit remote';
+  description = 'add a bare-scope as a remote';
+  extendedDescription = `supported protocols are [file, http].
+for example: "http://localhost:3000", "file:///tmp/local-scope"`;
   alias = '';
   opts = [['g', 'global', 'configure a remote bit scope']] as CommandOptions;
 
@@ -18,7 +22,7 @@ class RemoteAdd implements LegacyCommand {
     try {
       if (!url) return Promise.reject(new RemoteUndefined());
       return remoteAdd(url, global);
-    } catch (err) {
+    } catch (err: any) {
       return Promise.reject(err);
     }
   }
@@ -45,7 +49,9 @@ class RemoteRm implements LegacyCommand {
 
 export default class Remote implements LegacyCommand {
   name = 'remote';
-  description = `manage set of tracked bit scope(s)\n  https://${BASE_DOCS_DOMAIN}/docs/bit-server#working-with-remote-scopes`;
+  description = 'manage set of tracked bit scope(s)';
+  group: Group = 'collaborate';
+  extendedDescription = `https://${BASE_DOCS_DOMAIN}/scope/remote-scopes`;
   alias = '';
   opts = [['g', 'global', 'see globally configured remotes']] as CommandOptions;
   migration = true;
@@ -57,22 +63,13 @@ export default class Remote implements LegacyCommand {
   }
 
   report(remotes: { [key: string]: string }): string {
-    if (empty(remotes)) return chalk.red('no configured remotes found in scope');
+    if (isEmpty(remotes)) return chalk.red('no configured remotes found in scope');
 
-    const header = [
-      { value: 'scope name', width: 30, headerColor: 'cyan' },
-      { value: 'host', width: 100, headerColor: 'cyan' }
-    ];
-    const opts = {
-      align: 'left'
-    };
-
-    const table = new Table(header, [], opts);
-
+    const table = new Table({ head: ['scope name', 'host'], style: { head: ['cyan'] } });
     forEach(remotes, (host, name) => {
       table.push([name, host]);
     });
 
-    return table.render();
+    return table.toString();
   }
 }

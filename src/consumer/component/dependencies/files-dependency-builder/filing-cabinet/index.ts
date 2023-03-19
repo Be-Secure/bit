@@ -3,34 +3,36 @@
 /**
  * this file had been forked from https://github.com/dependents/node-filing-cabinet
  */
-import ts from 'typescript';
-import path from 'path';
-import getModuleType from 'module-definition';
-import resolve from 'resolve';
-import amdLookup from 'module-lookup-amd';
-import stylusLookup from 'stylus-lookup';
-import sassLookup from 'sass-lookup';
-import resolveDependencyPath from 'resolve-dependency-path';
 import appModulePath from 'app-module-path';
 import webpackResolve from 'enhanced-resolve';
 import isRelative from 'is-relative-path';
+import getModuleType from 'module-definition';
 import objectAssign from 'object-assign';
-// @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-import vueLookUp from '../lookups/vue-lookup';
+import path from 'path';
+import resolve from 'resolve';
+import resolveDependencyPath from 'resolve-dependency-path';
+import sassLookup from 'sass-lookup';
+import stylusLookup from 'stylus-lookup';
+import ts from 'typescript';
+
 import { isRelativeImport } from '../../../../../utils';
+import { DetectorHook } from '../detector-hook';
 
 const debug = require('debug')('cabinet');
 
 const defaultLookups = {
   '.js': jsLookup,
+  '.cjs': jsLookup,
+  '.mjs': jsLookup,
   '.jsx': jsLookup,
   '.ts': tsLookup,
   '.tsx': tsLookup,
+  '.cts': tsLookup,
+  '.mts': tsLookup,
   '.scss': cssPreprocessorLookup,
   '.sass': cssPreprocessorLookup,
   '.styl': stylusLookup,
   '.less': cssPreprocessorLookup,
-  '.vue': vueLookUp
 };
 
 // for some reason, .ts is not sufficient, .d.ts is needed as well
@@ -58,6 +60,7 @@ type Options = {
 };
 
 export default function cabinet(options: Options) {
+  const detectorHook = new DetectorHook();
   const { dependency, filename } = options;
   const ext = options.ext || path.extname(filename);
   debug(`working on a dependency "${dependency}" of a file "${filename}"`);
@@ -69,6 +72,17 @@ export default function cabinet(options: Options) {
     resolver = resolveDependencyPath;
   }
   if (ext === '.css' && dependency.startsWith('~')) resolver = cssPreprocessorLookup;
+
+  const detector = detectorHook.getDetector(ext);
+  if (detector) {
+    // test if the new detector API has a dependency lookup.
+    if (detector.dependencyLookup) {
+      resolver = detector.dependencyLookup;
+    } else {
+      // otherwise use TypeScript as the default resolver.
+      resolver = tsLookup;
+    }
+  }
 
   debug(`found a resolver ${resolver.name} for ${ext}`);
 
@@ -86,7 +100,7 @@ export default function cabinet(options: Options) {
       );
       try {
         result = resolver(options);
-      } catch (err) {
+      } catch (err: any) {
         debug(`unable to use the resolver of ${dependencyExt} for ${filename}. got an error ${err.message}`);
       }
     }
@@ -103,7 +117,7 @@ module.exports.supportedFileExtensions = Object.keys(defaultLookups);
  * @param  {String} extension - The file extension that should use the resolver
  * @param  {Function} lookupStrategy - A resolver of dependency paths
  */
-module.exports.register = function(extension, lookupStrategy) {
+module.exports.register = function (extension, lookupStrategy) {
   defaultLookups[extension] = lookupStrategy;
 
   if (this.supportedFileExtensions.indexOf(extension) === -1) {
@@ -155,27 +169,19 @@ function _getJSType(options) {
  * @return {String}
  */
 function jsLookup(options: Options) {
-  const { configPath, dependency, directory, config, webpackConfig, filename, ast, isScript, content } = options;
+  const { dependency, directory, config, webpackConfig, filename, ast, isScript, content } = options;
   const type = _getJSType({
     config,
     webpackConfig,
     filename,
     ast,
     isScript,
-    content
+    content,
   });
 
   switch (type) {
     case 'amd':
-      debug('using amd resolver');
-      return amdLookup({
-        config,
-        // Optional in case a pre-parsed config is being passed in
-        configPath,
-        partial: dependency,
-        directory,
-        filename
-      });
+      throw new Error('AMD is not supported');
 
     case 'webpack':
       debug('using webpack resolver for es6');
@@ -231,7 +237,7 @@ function tsLookup(options: Options) {
   debug('performing a typescript lookup');
 
   const tsOptions = {
-    module: ts.ModuleKind.CommonJS
+    module: ts.ModuleKind.CommonJS,
   };
 
   const host = ts.createCompilerHost({});
@@ -305,10 +311,10 @@ function commonJSLookup(options: Options) {
     result = resolve.sync(dependency, {
       extensions: resolveExtensions,
       basedir: directory,
-      moduleDirectory: ['node_modules']
+      moduleDirectory: ['node_modules'],
     });
     debug(`resolved path: ${result}`);
-  } catch (e) {
+  } catch (e: any) {
     debug(`could not resolve ${dependency}`);
   }
 
@@ -325,7 +331,7 @@ function resolveWebpackPath(dependency, filename, directory, webpackConfig) {
     if (typeof loadedConfig === 'function') {
       loadedConfig = loadedConfig();
     }
-  } catch (e) {
+  } catch (e: any) {
     debug(`error loading the webpack config at ${webpackConfig}`);
     debug(e.message);
     debug(e.stack);
@@ -360,7 +366,7 @@ function resolveWebpack(dependency, filename, directory, resolveConfig) {
     const lookupPath = isRelative(dependency) ? path.dirname(filename) : directory;
 
     return resolver(lookupPath, dependency);
-  } catch (e) {
+  } catch (e: any) {
     debug(`error when resolving ${dependency}`);
     debug(e.message);
     debug(e.stack);

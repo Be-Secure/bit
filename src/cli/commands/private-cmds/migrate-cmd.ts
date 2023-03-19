@@ -1,6 +1,7 @@
 import chalk from 'chalk';
-import { LegacyCommand, CommandOptions } from '../../legacy-command';
+
 import { migrate } from '../../../api/consumer';
+import { CommandOptions, LegacyCommand } from '../../legacy-command';
 
 export default class Migrate implements LegacyCommand {
   name = 'migrate [scopePath]';
@@ -11,9 +12,9 @@ export default class Migrate implements LegacyCommand {
   alias = '';
   opts = [['v', 'verbose', 'showing logs for the migration process']] as CommandOptions;
 
-  action([scopePath]: [string], { verbose }: { verbose: boolean | null | undefined }): Promise<any> {
+  action([scopePath]: [string], { verbose }: { verbose: boolean | undefined; harmony: boolean }): Promise<any> {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    return migrate(scopePath, verbose).then(result => ({ result, verbose }));
+    return migrate(scopePath, verbose).then((result) => ({ result, verbose }));
   }
 
   report(): string {

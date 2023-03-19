@@ -1,14 +1,27 @@
 import { expect } from 'chai';
 import sinon from 'sinon';
+import { BitIds } from '../bit-id';
+
 import Consumer from '../consumer/consumer';
 import { MissingBitMapComponent } from './bit-map/exceptions';
 
-describe('Consumer', function() {
+describe('Consumer', function () {
+  // @ts-ignore
   this.timeout(0);
   let sandbox;
   const getConsumerInstance = () => {
     // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    const consumer = new Consumer({ projectPath: '', config: {} });
+    const consumer = new Consumer({
+      projectPath: '',
+      // @ts-ignore
+      config: {},
+      // @ts-ignore
+      scope: { getPath: () => '', lanes: { getCurrentLaneName: () => '' } },
+    });
+    // @ts-ignore
+    consumer.bitMap = {
+      getAllBitIdsFromAllLanes: () => new BitIds(),
+    };
     return consumer;
   };
   describe('getComponentIdFromNodeModulesPath', () => {
@@ -44,21 +57,6 @@ describe('Consumer', function() {
       );
       expect(result.scope).to.equal('q207wrk9-remote.comp');
       expect(result.name).to.equal('comp2/comp3');
-    });
-  });
-  describe('getParsedId', () => {
-    let consumer;
-    before(() => {
-      sandbox = sinon.createSandbox();
-      // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      consumer = getConsumerInstance(sandbox);
-    });
-    after(() => {
-      sandbox.restore();
-    });
-    it('should throw an error for a missing component', () => {
-      const func = () => consumer.getParsedId('non-exist-comp');
-      expect(func).to.throw(MissingBitMapComponent);
     });
   });
   describe('getParsedIdIfExist', () => {

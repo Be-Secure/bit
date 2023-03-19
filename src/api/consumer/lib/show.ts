@@ -1,8 +1,8 @@
+import { getConsumerComponent, getScopeComponent } from '..';
 import loader from '../../../cli/loader/loader';
-import { getScopeComponent, getConsumerComponent } from '..';
 import { BEFORE_SHOW_REMOTE } from '../../../cli/loader/loader-messages';
 
-export default (async function show({
+export default async function show({
   id,
   json,
   versions,
@@ -11,7 +11,7 @@ export default (async function show({
   compare,
   detailed,
   dependents,
-  dependencies
+  dependencies,
 }: {
   id: string;
   json: boolean;
@@ -24,10 +24,11 @@ export default (async function show({
   dependencies: boolean;
 }) {
   if (versions) {
-    return getComponent(versions).then(components => ({
+    const components = await getComponent(versions);
+    return {
       components,
-      versions
-    }));
+      versions,
+    };
   }
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   return getComponent().then(({ component, componentModel, dependentsInfo, dependenciesInfo }) => ({
@@ -37,7 +38,7 @@ export default (async function show({
     dependenciesInfo,
     json,
     outdated,
-    detailed
+    detailed,
   }));
 
   function getComponent(allVersions: boolean | null | undefined) {
@@ -46,7 +47,7 @@ export default (async function show({
       allVersions,
       showRemoteVersions: outdated,
       showDependents: dependents,
-      showDependencies: dependencies
+      showDependencies: dependencies,
     };
     if (remote) {
       loader.start(BEFORE_SHOW_REMOTE);
@@ -55,4 +56,4 @@ export default (async function show({
     }
     return getConsumerComponent({ ...params, compare });
   }
-});
+}

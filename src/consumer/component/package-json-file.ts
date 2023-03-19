@@ -1,17 +1,17 @@
-import fs from 'fs-extra';
-import * as path from 'path';
-import R from 'ramda';
 import detectIndent from 'detect-indent';
 // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
 import detectNewline from 'detect-newline';
+import fs from 'fs-extra';
+import * as path from 'path';
+import R from 'ramda';
 import stringifyPackage from 'stringify-package';
-import { PathOsBased, PathOsBasedRelative, PathOsBasedAbsolute, PathRelative } from '../../utils/path';
-import { PACKAGE_JSON, DEPENDENCIES_FIELDS } from '../../constants';
+
+import { DEPENDENCIES_FIELDS, PACKAGE_JSON } from '../../constants';
 import logger from '../../logger/logger';
-import Component from './consumer-component';
 import componentIdToPackageName from '../../utils/bit/component-id-to-package-name';
+import { PathOsBased, PathOsBasedAbsolute, PathOsBasedRelative, PathRelative } from '../../utils/path';
+import Component from './consumer-component';
 import PackageJsonVinyl from './package-json-vinyl';
-import { Capsule } from '../../extensions/isolator';
 
 /**
  * when a package.json file is loaded, we save the indentation and the type of newline it uses, so
@@ -31,7 +31,7 @@ export default class PackageJsonFile {
     fileExist,
     workspaceDir,
     indent,
-    newline
+    newline,
   }: {
     filePath: PathOsBasedRelative;
     packageJsonObject?: Record<string, any>;
@@ -75,6 +75,14 @@ export default class PackageJsonFile {
     return new PackageJsonFile({ filePath, packageJsonObject, fileExist: true, workspaceDir, indent, newline });
   }
 
+  static async reset(workspaceDir: PathOsBasedAbsolute) {
+    const pkgJsonFile = await PackageJsonFile.load(workspaceDir);
+    if (pkgJsonFile.fileExist) {
+      pkgJsonFile.removeProperty('bit');
+      await pkgJsonFile.write();
+    }
+  }
+
   static loadSync(workspaceDir: PathOsBasedAbsolute, componentDir: PathRelative = '.'): PackageJsonFile {
     const filePath = composePath(componentDir);
     const filePathAbsolute = path.join(workspaceDir, filePath);
@@ -99,30 +107,29 @@ export default class PackageJsonFile {
     return new PackageJsonFile({ filePath, packageJsonObject, fileExist: true, workspaceDir });
   }
 
-  static loadFromCapsuleSync(capsule: Capsule) {
-    const filePath = composePath(capsule.wrkDir);
-    const filePathAbsolute = filePath;
+  static loadFromCapsuleSync(capsuleRootDir: string) {
+    const filePath = composePath('.');
+    const filePathAbsolute = path.join(capsuleRootDir, filePath);
     const packageJsonStr = PackageJsonFile.getPackageJsonStrIfExistSync(filePathAbsolute);
     if (!packageJsonStr) {
-      throw new Error(`capsule ${capsule.wrkDir} is missing package.json`);
+      throw new Error(`capsule ${capsuleRootDir} is missing package.json`);
     }
     const packageJsonObject = PackageJsonFile.parsePackageJsonStr(packageJsonStr, filePath);
-    return new PackageJsonFile({ filePath, packageJsonObject, fileExist: true, workspaceDir: capsule.wrkDir });
+    return new PackageJsonFile({ filePath, packageJsonObject, fileExist: true, workspaceDir: capsuleRootDir });
   }
 
   static createFromComponent(
     componentDir: PathRelative,
     component: Component,
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-    excludeRegistryPrefix? = false
+    addDefaultScopeToCompId = false, // for the capsule, we want the default-scope because it gets published
+    addExportProperty = false
   ): PackageJsonFile {
     const filePath = composePath(componentDir);
-    const name = componentIdToPackageName(
-      component.id,
-      component.bindingPrefix,
-      component.defaultScope,
-      !excludeRegistryPrefix
-    );
+    const name = componentIdToPackageName({ withPrefix: true, ...component, id: component.id });
+    const componentIdWithDefaultScope =
+      component.id.hasScope() || !addDefaultScopeToCompId
+        ? component.id
+        : component.id.changeScope(component.defaultScope);
     const packageJsonObject = {
       name,
       version: component.version,
@@ -132,30 +139,20 @@ export default class PackageJsonFile {
       // Used when resolve dependencies to identify that some package should be treated as component
       // TODO: replace by better way to identify that something is a component for sure
       // TODO: Maybe need to add the binding prefix here
-      componentId: component.id.serialize(),
+      componentId: componentIdWithDefaultScope.serialize(),
       dependencies: {
         ...component.packageDependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.compilerPackageDependencies.dependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.testerPackageDependencies.dependencies
       },
       devDependencies: {
         ...component.devPackageDependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.compilerPackageDependencies.devDependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.testerPackageDependencies.devDependencies
       },
       peerDependencies: {
         ...component.peerPackageDependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.compilerPackageDependencies.peerDependencies,
-        // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-        ...component.testerPackageDependencies.peerDependencies
       },
-      license: `SEE LICENSE IN ${!R.isEmpty(component.license) ? 'LICENSE' : 'UNLICENSED'}`
+      license: `SEE LICENSE IN ${!R.isEmpty(component.license) ? 'LICENSE' : 'UNLICENSED'}`,
     };
+    // @ts-ignore
+    if (addExportProperty) packageJsonObject.exported = component.id.hasScope();
     if (!packageJsonObject.homepage) delete packageJsonObject.homepage;
     return new PackageJsonFile({ filePath, packageJsonObject, fileExist: false });
   }
@@ -166,7 +163,7 @@ export default class PackageJsonFile {
       path: this.filePath,
       content: this.packageJsonObject,
       indent: this.indent,
-      newline: this.newline
+      newline: this.newline,
     });
   }
 
@@ -186,9 +183,15 @@ export default class PackageJsonFile {
     delete this.packageJsonObject.dependencies[dependency];
   }
 
+  copyPeerDependenciesToDev() {
+    const devDeps = this.packageJsonObject.devDependencies || {};
+    const peerDeps = this.packageJsonObject.peerDependencies || {};
+    this.packageJsonObject.devDependencies = { ...devDeps, ...peerDeps };
+  }
+
   replaceDependencies(dependencies: Record<string, any>) {
-    Object.keys(dependencies).forEach(dependency => {
-      DEPENDENCIES_FIELDS.forEach(dependencyField => {
+    Object.keys(dependencies).forEach((dependency) => {
+      DEPENDENCIES_FIELDS.forEach((dependencyField) => {
         if (this.packageJsonObject[dependencyField] && this.packageJsonObject[dependencyField][dependency]) {
           this.packageJsonObject[dependencyField][dependency] = dependencies[dependency];
         }
@@ -198,6 +201,10 @@ export default class PackageJsonFile {
 
   addOrUpdateProperty(propertyName: string, propertyValue: any): void {
     this.packageJsonObject[propertyName] = propertyValue;
+  }
+
+  removeProperty(propertyName: string) {
+    delete this.packageJsonObject[propertyName];
   }
 
   getProperty(propertyName: string): any {
@@ -228,7 +235,7 @@ export default class PackageJsonFile {
   static parsePackageJsonStr(str: string, dir: string) {
     try {
       return JSON.parse(str);
-    } catch (err) {
+    } catch (err: any) {
       throw new Error(`failed parsing package.json file at ${dir}. original error: ${err.message}`);
     }
   }
@@ -236,7 +243,7 @@ export default class PackageJsonFile {
   static async getPackageJsonStrIfExist(filePath: PathOsBased) {
     try {
       return await fs.readFile(filePath, 'utf-8');
-    } catch (err) {
+    } catch (err: any) {
       if (err.code === 'ENOENT') {
         return null; // file not found
       }
@@ -247,7 +254,7 @@ export default class PackageJsonFile {
   static getPackageJsonStrIfExistSync(filePath: PathOsBased) {
     try {
       return fs.readFileSync(filePath, 'utf-8');
-    } catch (err) {
+    } catch (err: any) {
       if (err.code === 'ENOENT') {
         return null; // file not found
       }

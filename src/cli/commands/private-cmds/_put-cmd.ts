@@ -1,10 +1,11 @@
-import { LegacyCommand } from '../../legacy-command';
-import { fromBase64, buildCommandMessage, packCommand, unpackCommand } from '../../../utils';
-import { put } from '../../../api/scope';
 import { migrate } from '../../../api/consumer';
+import { put } from '../../../api/scope';
 import logger from '../../../logger/logger';
 import { checkVersionCompatibilityOnTheServer } from '../../../scope/network/check-version-compatibility';
+import { ObjectList } from '../../../scope/objects/object-list';
+import { buildCommandMessage, fromBase64, packCommand, unpackCommand } from '../../../utils';
 import clientSupportCompressedCommand from '../../../utils/ssh/client-support-compressed-command';
+import { LegacyCommand } from '../../legacy-command';
 
 let compressResponse;
 export default class Put implements LegacyCommand {
@@ -17,20 +18,22 @@ export default class Put implements LegacyCommand {
 
   action([path, args]: [string, string]): Promise<any> {
     let data = '';
-    const { headers } = unpackCommand(args);
+    const { payload, headers } = unpackCommand(args);
     compressResponse = clientSupportCompressedCommand(headers.version);
     checkVersionCompatibilityOnTheServer(headers.version);
     return new Promise((resolve, reject) => {
       process.stdin
-        .on('data', chunk => {
+        .on('data', (chunk) => {
           data += chunk.toString();
         })
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         .on('end', () => {
           logger.info('Checking if a migration is needed');
           const scopePath = fromBase64(path);
+          const objectList = ObjectList.fromJsonString(data);
           return migrate(scopePath, false)
             .then(() => {
-              return put({ componentObjects: data, path: fromBase64(path) }, headers);
+              return put({ objectList, path: fromBase64(path) }, payload, headers);
             })
             .then(resolve)
             .catch(reject);

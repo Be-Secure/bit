@@ -1,13 +1,14 @@
 /* eslint no-console: 0 */
-import fs from 'fs-extra';
-import * as path from 'path';
-import execa from 'execa';
+import { addUser, REGISTRY_MOCK_PORT, start as startRegistryMock } from '@pnpm/registry-mock';
 import { ChildProcess } from 'child_process';
+import { fetch } from '@pnpm/fetch';
+import execa from 'execa';
+import * as path from 'path';
+
 import Helper from '../src/e2e-helper/e2e-helper';
 
-const isAppVeyor = process.env.APPVEYOR === 'True';
 const skipRegistryTests = process.env.SKIP_REGISTRY_TESTS === 'True' || process.env.SKIP_REGISTRY_TESTS === 'true';
-export const supportNpmCiRegistryTesting = !isAppVeyor && !skipRegistryTests;
+export const supportNpmCiRegistryTesting = !skipRegistryTests;
 
 /**
  * some features, such as installing dependencies as packages, require npm registry to be set.
@@ -36,12 +37,14 @@ export default class NpmCiRegistry {
   // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
   registryServer: ChildProcess;
   helper: Helper;
+  ciRegistry = `http://localhost:${REGISTRY_MOCK_PORT}`;
+  ciDefaultScope = '@ci';
   constructor(helper: Helper) {
     this.helper = helper;
   }
-  async init(scopes: string[] = ['@ci']) {
+  async init(scopes: string[] = [this.ciDefaultScope]) {
     await this._establishRegistry();
-    this._addDefaultUser();
+    await this._addDefaultUser();
     this._registerScopes(scopes);
   }
 
@@ -53,48 +56,64 @@ export default class NpmCiRegistry {
   }
 
   _establishRegistry(): Promise<void> {
-    return new Promise(resolve => {
-      this.registryServer = execa('verdaccio', { detached: true });
+    return new Promise((resolve, reject) => {
+      this.registryServer = startRegistryMock({ detached: true });
+      let resolved = false;
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      this.registryServer.stdout.on('data', data => {
+      this.registryServer.stdout.on('data', async (data): void => {
         if (this.helper.debugMode) console.log(`stdout: ${data}`);
-        if (data.includes('4873')) {
-          if (this.helper.debugMode) console.log('Verdaccio server is up and running');
-          resolve();
+        if (!resolved && data.includes(REGISTRY_MOCK_PORT)) {
+          resolved = true;
+          let fetchResults;
+          try {
+            fetchResults = await fetch(`http://localhost:${REGISTRY_MOCK_PORT}`, {
+              retry: {
+                minTimeout: 1000,
+                maxTimeout: 10000,
+                retries: 3,
+              },
+            });
+          } catch (err) {
+            reject(err);
+            return;
+          }
+          if (fetchResults.status === 200) {
+            if (this.helper.debugMode) console.log('Verdaccio server is up and running');
+            resolve();
+          } else {
+            reject(new Error('Registry has not started'));
+          }
         }
       });
       // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
-      this.registryServer.stderr.on('data', data => {
+      this.registryServer.stderr.on('data', (data) => {
         if (this.helper.debugMode) console.log(`stderr: ${data}`);
       });
-      this.registryServer.on('close', code => {
+      this.registryServer.on('error', (err) => {
+        if (this.helper.debugMode) console.log(`child process errored ${err.message}`);
+        reject(err);
+      });
+      this.registryServer.on('close', (code) => {
         if (this.helper.debugMode) console.log(`child process exited with code ${code}`);
       });
     });
   }
 
-  _addDefaultUser() {
-    const addUser = `expect <<EOD
-spawn npm adduser --registry http://localhost:4873 --scope=@ci
-expect {
-"Username:" {send "ci\r"; exp_continue}
-"Password:" {send "secret\r"; exp_continue}
-"Email: (this IS public)" {send "ci@ci.com\r"; exp_continue}
-}
-EOD`;
-    fs.writeFileSync('adduser.sh', addUser);
-    const addUserResult = execa.sync('sh', ['adduser.sh']);
-    if (!addUserResult.stdout.includes('Logged in as ci to scope @ci')) {
-      throw new Error(`failed executing npm adduser ${addUserResult.stderr}`);
-    }
+  async _addDefaultUser() {
+    const { token } = await addUser({
+      username: 'ci',
+      password: 'secret',
+      email: 'ci@ci.com',
+    });
+    execa.sync('npm', ['config', 'set', `${this.ciDefaultScope}:registry=${this.ciRegistry}`]);
+    execa.sync('npm', ['config', 'set', `${this.ciRegistry.replace('http://', '//')}:_authToken=${token}`]);
     if (this.helper.debugMode) console.log('default user has been added successfully to Verdaccio');
-    fs.removeSync('adduser.sh');
   }
 
   // TODO: improve this to only write it to project level npmrc instead of global one
   _registerScopes(scopes: string[] = ['@ci']) {
-    scopes.forEach(scope => {
-      this.helper.command.runCmd(`npm config set ${scope}:registry http://localhost:4873`);
+    scopes.forEach((scope) => {
+      this.helper.command.runCmd(`npm config set ${scope}:registry ${this.ciRegistry}`);
     });
   }
 
@@ -103,6 +122,9 @@ EOD`;
    * them later on into @ci scope of Verdaccio registry
    */
   setCiScopeInBitJson() {
+    if (this.helper.general.isHarmonyProject()) {
+      throw new Error('Harmony does not need this. remove this call please');
+    }
     const bitJson = this.helper.bitJson.read();
     bitJson.bindingPrefix = '@ci';
     this.helper.bitJson.write(bitJson);
@@ -125,12 +147,44 @@ EOD`;
       : `${this.helper.scopes.remote}/${componentName}`;
     const componentId = `${componentFullName}@${componentVersion}`;
     const options = {
-      d: packDir
+      d: packDir,
     };
+    if (this.helper.general.isHarmonyProject()) {
+      // @ts-ignore
+      options.c = '';
+    }
     this.helper.command.packComponent(componentId, options, true);
     const extractedDir = path.join(packDir, 'package');
     this._validateRegistryScope(extractedDir);
     this.helper.command.runCmd('npm publish', extractedDir);
+  }
+
+  configureCiInPackageJsonHarmony() {
+    const pkg = {
+      packageJson: {
+        publishConfig: {
+          scope: this.ciDefaultScope,
+          registry: this.ciRegistry,
+        },
+      },
+    };
+    this.helper.bitJsonc.addToVariant('*', 'teambit.pkg/pkg', pkg);
+  }
+
+  configureCustomNameInPackageJsonHarmony(name: string) {
+    const pkg = {
+      packageJson: {
+        name,
+        publishConfig: {
+          registry: this.ciRegistry,
+        },
+      },
+    };
+    this.helper.bitJsonc.addToVariant('*', 'teambit.pkg/pkg', pkg);
+  }
+
+  installPackage(pkgName: string) {
+    this.helper.command.runCmd(`npm install ${pkgName} --registry=${this.ciRegistry}`);
   }
 
   unpublishComponent(packageName: string) {
@@ -142,9 +196,9 @@ EOD`;
     this.helper.scopeHelper.addRemoteScope();
     this.helper.command.importComponent('* --objects');
     const remoteComponents = this.helper.command.listRemoteScopeParsed();
-    const remoteIds = remoteComponents.map(c => c.id);
+    const remoteIds = remoteComponents.map((c) => c.id);
     this.helper.scopeHelper.removeRemoteScope();
-    remoteIds.forEach(id => this.publishComponent(id));
+    remoteIds.forEach((id) => this.publishComponent(id));
   }
 
   /**
@@ -154,18 +208,21 @@ EOD`;
    * once the remote scope is deleted from the remote list, Bit assumes that it the remote is a hub
    * and enable the save-dependencies-as-packages feature.
    */
-  setResolver() {
+  setResolver(extraScopes: { [scopeName: string]: string } = {}) {
     const scopeJsonPath = '.bit/scope.json';
     const scopeJson = this.helper.fs.readJsonFile(scopeJsonPath);
     const resolverPath = path.join(this.helper.scopes.localPath, 'resolver.js');
-    // @ts-ignore AUTO-ADDED-AFTER-MIGRATION-PLEASE-FIX!
     scopeJson.resolverPath = resolverPath;
     this.helper.fs.createJsonFile(scopeJsonPath, scopeJson);
-    this.helper.fs.createFile('', 'resolver.js', this._getResolverContent());
+    this.helper.fs.createFile('', 'resolver.js', this._getResolverContent(extraScopes));
   }
 
-  _getResolverContent() {
-    return `module.exports = () => Promise.resolve('file://${this.helper.scopes.remotePath}');`;
+  _getResolverContent(extraScopes: { [scopeName: string]: string } = {}) {
+    return `const extraScopes = ${JSON.stringify(extraScopes)};
+module.exports = (scopeName) => {
+  if (extraScopes[scopeName]) return Promise.resolve('file://' + extraScopes[scopeName]);
+  return Promise.resolve('file://${this.helper.scopes.remotePath}');
+}`;
   }
 
   _validateRegistryScope(dir: string) {
@@ -174,5 +231,9 @@ EOD`;
     if (!packageJson.name.startsWith('@ci')) {
       throw new Error('expect package.json name to start with "@ci" in order to publish it to @ci scope');
     }
+  }
+
+  getRegistryUrl() {
+    return this.ciRegistry;
   }
 }

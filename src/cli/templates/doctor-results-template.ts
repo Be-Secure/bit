@@ -1,15 +1,16 @@
-import { table } from 'table';
 import chalk from 'chalk';
+import { table } from 'table';
+
+import { DoctorMetaData, DoctorRunAllResults } from '../../api/consumer/lib/doctor';
 import { ExamineResult } from '../../doctor/diagnosis';
-import { DoctorRunAllResults } from '../../api/consumer/lib/doctor';
 
 // const NAME_COLUMN_WIDTH = 100;
 // const DESCRIPTION_COLUMN_WIDTH = 30;
 
 const summeryTableColumnConfig = {
   columnDefault: {
-    alignment: 'left'
-  }
+    alignment: 'left',
+  },
 };
 
 type SummeryRow = [string, string, string, string];
@@ -81,7 +82,7 @@ function _createWrittenFileSection(savedFilePath) {
   return `File written to ${savedFilePath}`;
 }
 
-function _createMetaSection(metaData) {
+function _createMetaSection(metaData: DoctorMetaData) {
   return `
   bit version   : ${metaData.bitVersion}
   node version  : ${metaData.nodeVersion}

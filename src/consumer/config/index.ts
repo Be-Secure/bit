@@ -4,8 +4,8 @@ export {
   default as LegacyWorkspaceConfig,
   WorkspaceConfigProps as LegacyWorkspaceConfigProps,
   WorkspaceConfigEnsureFunction,
-  WorkspaceConfigLoadFunction
+  WorkspaceConfigLoadFunction,
 } from './workspace-config';
 export { ILegacyWorkspaceConfig } from './legacy-workspace-config-interface';
-export { ExtensionConfigList, ExtensionConfigEntry, IExtensionConfigList } from './extension-config-list';
+export { ExtensionDataList, ExtensionDataEntry, REMOVE_EXTENSION_SPECIAL_SIGN } from './extension-data';
 export default ComponentConfig;

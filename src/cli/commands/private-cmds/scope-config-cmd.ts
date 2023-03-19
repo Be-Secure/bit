@@ -1,8 +1,9 @@
 /* eslint max-classes-per-file: 0 */
 import chalk from 'chalk';
-import { LegacyCommand } from '../../legacy-command';
-import { objectToStringifiedTupleArray } from '../../../utils';
+
 import { scopeConfig } from '../../../api/scope';
+import { objectToStringifiedTupleArray } from '../../../utils';
+import { LegacyCommand } from '../../legacy-command';
 
 class ScopeConfigSet implements LegacyCommand {
   name = 'set <key> <val>';
@@ -49,7 +50,7 @@ class ScopeConfigList implements LegacyCommand {
 
   report(conf: { [key: string]: any }): string {
     return objectToStringifiedTupleArray(conf)
-      .map(tuple => {
+      .map((tuple) => {
         return tuple.join('     ');
       })
       .join('\n');
@@ -84,7 +85,7 @@ export default class ScopeConfig implements LegacyCommand {
 
   report(conf: { [key: string]: string }): string {
     return objectToStringifiedTupleArray(conf)
-      .map(tuple => {
+      .map((tuple) => {
         return tuple.join('     ');
       })
       .join('\n');

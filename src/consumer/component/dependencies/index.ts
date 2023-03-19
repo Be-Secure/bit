@@ -1,4 +1,4 @@
+import Dependencies, { DependenciesFilterFunction } from './dependencies';
 import Dependency from './dependency';
-import Dependencies from './dependencies';
 
-export { Dependency, Dependencies };
+export { Dependency, Dependencies, DependenciesFilterFunction };

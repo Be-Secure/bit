@@ -1,5 +1,6 @@
-import { isAbsolute } from 'path';
 import fs from 'fs-extra';
+import { isAbsolute } from 'path';
+
 import GeneralError from '../../error/general-error';
 import { PathOsBasedAbsolute } from '../path';
 
@@ -9,7 +10,7 @@ export default function moveSync(src: PathOsBasedAbsolute, dest: PathOsBasedAbso
   }
   try {
     fs.moveSync(src, dest, options);
-  } catch (err) {
+  } catch (err: any) {
     if (err.message.includes('Cannot move') && err.message.includes('into itself')) {
       throw new GeneralError(`unable to move '${src}' into itself '${dest}'`);
     }

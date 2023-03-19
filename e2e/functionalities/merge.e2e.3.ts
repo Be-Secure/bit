@@ -1,14 +1,14 @@
 import { expect } from 'chai';
-import Helper from '../../src/e2e-helper/e2e-helper';
-import { MergeConflict, MergeConflictOnRemote } from '../../src/scope/exceptions';
-import * as fixtures from '../../src/fixtures/fixtures';
 
-describe('merge functionality', function() {
+import Helper from '../../src/e2e-helper/e2e-helper';
+import * as fixtures from '../../src/fixtures/fixtures';
+import { MergeConflict, MergeConflictOnRemote } from '../../src/scope/exceptions';
+
+describe('merge functionality', function () {
   this.timeout(0);
   let helper: Helper;
   before(() => {
     helper = new Helper();
-    helper.command.setFeatures('legacy-workspace-config');
   });
   after(() => {
     helper.scopeHelper.destroy();
@@ -17,97 +17,64 @@ describe('merge functionality', function() {
     before(() => {
       helper.scopeHelper.setNewLocalAndRemoteScopes();
       helper.fixtures.createComponentBarFoo();
-      helper.fixtures.addComponentBarFoo();
+      helper.fixtures.addComponentBarFooAsDir();
       helper.fixtures.tagComponentBarFoo();
 
       helper.fs.createFile('bar2', 'foo2.js');
-      helper.command.addComponent('bar2/foo2.js', { i: 'bar2/foo2' });
-      helper.command.tagComponent('bar2/foo2');
+      helper.command.addComponent('bar2', { i: 'bar2/foo2' });
+      helper.command.tagWithoutBuild('bar2/foo2');
 
-      helper.command.exportAllComponents();
+      helper.command.export();
 
       helper.scopeHelper.reInitLocalScope();
       helper.scopeHelper.addRemoteScope();
       helper.command.importComponent('bar/foo');
       helper.command.importComponent('bar2/foo2');
       const scopeWithV1 = helper.scopeHelper.cloneLocalScope();
-      helper.command.tagComponent('bar/foo', 'msg', '-f');
-      helper.command.tagComponent('bar2/foo2', 'msg', '-f');
-      helper.command.exportAllComponents(); // v2 is exported
+      helper.command.tagWithoutBuild('bar/foo', '--unmodified');
+      helper.command.tagWithoutBuild('bar2/foo2', '--unmodified');
+      helper.command.export(); // v2 is exported
 
       helper.scopeHelper.getClonedLocalScope(scopeWithV1);
-      helper.command.tagComponent('bar/foo', 'msg', '-f');
-      helper.command.tagComponent('bar2/foo2', 'msg', '-f');
+      helper.command.tagWithoutBuild('bar/foo', '--unmodified');
+      helper.command.tagWithoutBuild('bar2/foo2', '--unmodified');
     });
     it('should throw MergeConflictOnRemote error when exporting the component', () => {
-      const exportFunc = () => helper.command.exportAllComponents(); // v2 is exported again
+      const exportFunc = () => helper.command.export(); // v2 is exported again
       const idsAndVersions = [
         { id: `${helper.scopes.remote}/bar/foo`, versions: ['0.0.2'] },
-        { id: `${helper.scopes.remote}/bar2/foo2`, versions: ['0.0.2'] }
+        { id: `${helper.scopes.remote}/bar2/foo2`, versions: ['0.0.2'] },
       ];
-      const error = new MergeConflictOnRemote(idsAndVersions);
+      const error = new MergeConflictOnRemote(idsAndVersions, []);
       helper.general.expectToThrow(exportFunc, error);
     });
     it('should throw MergeConflict error when importing the component', () => {
       const importFunc = () => helper.command.importComponent('bar/foo');
       const error = new MergeConflict(`${helper.scopes.remote}/bar/foo`, ['0.0.2']);
-      helper.general.expectToThrow(importFunc, error);
-    });
-  });
-  describe('import an older version of a component', () => {
-    before(() => {
-      helper.scopeHelper.setNewLocalAndRemoteScopes();
-
-      helper.fs.createFile('utils', 'is-type.js', fixtures.isType);
-      helper.fixtures.addComponentUtilsIsType();
-      helper.fs.createFile('utils', 'is-string.js', fixtures.isString);
-      helper.fixtures.addComponentUtilsIsString();
-
-      helper.command.tagAllComponents();
-      helper.command.exportAllComponents();
-      const clonedScope = helper.scopeHelper.cloneRemoteScope();
-
-      helper.fs.createFile('utils', 'is-type.js', fixtures.isTypeV2); // modify is-type
-      helper.command.tagAllComponents();
-      helper.command.exportAllComponents();
-
-      helper.scopeHelper.reInitLocalScope();
-      helper.scopeHelper.addRemoteScope();
-      helper.command.importComponent('utils/is-type'); // v2
-
-      helper.scopeHelper.getClonedRemoteScope(clonedScope);
-      helper.command.importComponent('utils/is-string'); // v1
-    });
-    it('the second import should not override the previously imported component', () => {
-      const catScope = helper.command.catScope();
-      const isTypeObject = catScope.find(c => c.name === 'utils/is-type');
-      expect(Object.keys(isTypeObject.versions).length).to.equal(2);
-      expect(isTypeObject.versions).to.have.property('0.0.2');
+      expect(importFunc).to.throw(error.message);
+      expect(importFunc).to.not.throw('unhandled rejection found');
     });
   });
   describe('importing a component with --merge flag', () => {
     let beforeImport;
     before(() => {
       helper.scopeHelper.setNewLocalAndRemoteScopes();
-      helper.fs.createFile('utils', 'is-type.js', fixtures.isType);
-      helper.fs.createFile('utils', 'is-string.js', fixtures.isString);
-      helper.fixtures.addComponentUtilsIsType();
-      helper.fixtures.addComponentUtilsIsString();
-      helper.command.tagAllComponents();
-      helper.fs.createFile('utils', 'is-type.js', fixtures.isTypeV2);
-      helper.fixtures.addComponentUtilsIsType();
-      helper.command.tagAllComponents();
-      helper.command.exportAllComponents();
+      helper.fixtures.populateComponents(2);
+      helper.fs.outputFile('comp2/is-type.js', fixtures.isType);
+      helper.command.tagAllWithoutBuild();
+      helper.fs.outputFile('comp2/is-type.js', fixtures.isTypeV2);
+      helper.command.tagAllWithoutBuild();
+      helper.command.export();
 
       helper.scopeHelper.reInitLocalScope();
       helper.scopeHelper.addRemoteScope();
       beforeImport = helper.scopeHelper.cloneLocalScope();
-      helper.command.importComponent('utils/is-type@0.0.1');
+      helper.command.importComponent('comp2@0.0.1', '--path components/comp2');
     });
     describe('using invalid value for merge flag', () => {
       let output;
       before(() => {
-        output = helper.general.runWithTryCatch('bit import utils/is-type --merge=invalid');
+        output = helper.general.runWithTryCatch('bit import comp2 --merge=invalid');
       });
       it('should throw an error', () => {
         expect(output).to.have.string('merge must be one of the following');
@@ -116,15 +83,15 @@ describe('merge functionality', function() {
     describe('modifying the component so it will get conflict upon importing', () => {
       let localScope;
       before(() => {
-        helper.fs.createFile('components/utils/is-type', 'is-type.js', fixtures.isTypeV3);
+        helper.fs.createFile('components/comp2', 'is-type.js', fixtures.isTypeV3);
         localScope = helper.scopeHelper.cloneLocalScope();
       });
       describe('merge with strategy=manual', () => {
         let output;
         let fileContent;
         before(() => {
-          output = helper.command.importComponent('utils/is-type --merge=manual');
-          fileContent = helper.fs.readFile('components/utils/is-type/is-type.js');
+          output = helper.command.importComponent('comp2 --merge=manual');
+          fileContent = helper.fs.readFile('components/comp2/is-type.js');
         });
         it('should indicate that there were files with conflicts', () => {
           expect(output).to.have.string('conflicts');
@@ -135,8 +102,8 @@ describe('merge functionality', function() {
           expect(fileContent).to.have.string('=======');
         });
         it('should label the conflicts segments according to the versions', () => {
-          expect(fileContent).to.have.string('<<<<<<< 0.0.2'); // current-change
-          expect(fileContent).to.have.string('>>>>>>> 0.0.1 modified'); // incoming-change
+          expect(fileContent).to.have.string('<<<<<<< 0.0.1 modified'); // current-change
+          expect(fileContent).to.have.string('>>>>>>> 0.0.2'); // incoming-change
         });
         it('should show the component as modified', () => {
           const statusOutput = helper.command.runCmd('bit status');
@@ -144,8 +111,7 @@ describe('merge functionality', function() {
         });
         it('should update bitmap with the imported version', () => {
           const bitMap = helper.bitMap.read();
-          expect(bitMap).to.have.property(`${helper.scopes.remote}/utils/is-type@0.0.2`);
-          expect(bitMap).to.not.have.property(`${helper.scopes.remote}/utils/is-type@0.0.1`);
+          expect(bitMap.comp2.version).to.equal('0.0.2');
         });
       });
       describe('merge with strategy=theirs', () => {
@@ -153,8 +119,8 @@ describe('merge functionality', function() {
         let fileContent;
         before(() => {
           helper.scopeHelper.getClonedLocalScope(localScope);
-          output = helper.command.importComponent('utils/is-type --merge=theirs');
-          fileContent = helper.fs.readFile('components/utils/is-type/is-type.js');
+          output = helper.command.importComponent('comp2 --merge=theirs');
+          fileContent = helper.fs.readFile('components/comp2/is-type.js');
         });
         it('should not indicate that there were files with conflicts', () => {
           expect(output).to.not.have.string('conflicts');
@@ -168,8 +134,7 @@ describe('merge functionality', function() {
         });
         it('should update bitmap with the imported version', () => {
           const bitMap = helper.bitMap.read();
-          expect(bitMap).to.have.property(`${helper.scopes.remote}/utils/is-type@0.0.2`);
-          expect(bitMap).to.not.have.property(`${helper.scopes.remote}/utils/is-type@0.0.1`);
+          expect(bitMap.comp2.version).to.equal('0.0.2');
         });
       });
       describe('merge with strategy=ours', () => {
@@ -177,8 +142,8 @@ describe('merge functionality', function() {
         let fileContent;
         before(() => {
           helper.scopeHelper.getClonedLocalScope(localScope);
-          output = helper.command.importComponent('utils/is-type --merge=ours');
-          fileContent = helper.fs.readFile('components/utils/is-type/is-type.js');
+          output = helper.command.importComponent('comp2 --merge=ours');
+          fileContent = helper.fs.readFile('components/comp2/is-type.js');
         });
         it('should not indicate that there were files with conflicts', () => {
           expect(output).to.not.have.string('conflicts');
@@ -192,22 +157,21 @@ describe('merge functionality', function() {
         });
         it('should update bitmap with the imported version', () => {
           const bitMap = helper.bitMap.read();
-          expect(bitMap).to.have.property(`${helper.scopes.remote}/utils/is-type@0.0.2`);
-          expect(bitMap).to.not.have.property(`${helper.scopes.remote}/utils/is-type@0.0.1`);
+          expect(bitMap.comp2.version).to.equal('0.0.2');
         });
       });
     });
     describe('modifying the component to be the same as the imported component (so the merge will succeed with no conflicts)', () => {
       before(() => {
-        helper.fs.createFile('components/utils/is-type', 'is-type.js', fixtures.isTypeV2);
+        helper.fs.createFile('components/comp2', 'is-type.js', fixtures.isTypeV2);
       });
       describe('merge with strategy=manual', () => {
         // strategies of ours and theirs are leading to the same results
         let output;
         let fileContent;
         before(() => {
-          output = helper.command.importComponent('utils/is-type --merge=manual');
-          fileContent = helper.fs.readFile('components/utils/is-type/is-type.js');
+          output = helper.command.importComponent('comp2 --merge=manual');
+          fileContent = helper.fs.readFile('components/comp2/is-type.js');
         });
         it('should not indicate that there were files with conflicts', () => {
           expect(output).to.not.have.string('conflicts');
@@ -221,25 +185,24 @@ describe('merge functionality', function() {
         });
         it('should update bitmap with the imported version', () => {
           const bitMap = helper.bitMap.read();
-          expect(bitMap).to.have.property(`${helper.scopes.remote}/utils/is-type@0.0.2`);
-          expect(bitMap).to.not.have.property(`${helper.scopes.remote}/utils/is-type@0.0.1`);
+          expect(bitMap.comp2.version).to.equal('0.0.2');
         });
       });
     });
     describe('modifying the dependency then import --merge of the dependent', () => {
       before(() => {
         helper.scopeHelper.getClonedLocalScope(beforeImport);
-        helper.command.importComponent('utils/is-type');
-        helper.command.importComponent('utils/is-string');
-        helper.fs.createFile('components/utils/is-type', 'is-type.js', fixtures.isTypeV3);
+        helper.command.importComponent('comp2', '--path components/comp2');
+        helper.command.importComponent('comp1', '--path components/comp1');
+        helper.fs.createFile('components/comp2', 'is-type.js', fixtures.isTypeV3);
         // an intermediate step, make sure bit status shows as modified
-        expect(helper.command.statusComponentIsModified(`${helper.scopes.remote}/utils/is-type@0.0.2`)).to.be.true;
-        helper.command.importComponent('utils/is-string --merge');
+        expect(helper.command.statusComponentIsModified(`${helper.scopes.remote}/comp2@0.0.2`)).to.be.true;
+        helper.command.importComponent('comp1 --merge');
       });
       it('should not remove the dependency changes', () => {
-        const isTypeContent = helper.fs.readFile('components/utils/is-type/is-type.js');
+        const isTypeContent = helper.fs.readFile('components/comp2/is-type.js');
         expect(isTypeContent).to.equal(fixtures.isTypeV3);
-        expect(helper.command.statusComponentIsModified(`${helper.scopes.remote}/utils/is-type@0.0.2`)).to.be.true;
+        expect(helper.command.statusComponentIsModified(`${helper.scopes.remote}/comp2@0.0.2`)).to.be.true;
       });
     });
   });
